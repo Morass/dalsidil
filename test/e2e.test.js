@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
 const { JSDOM } = require('jsdom');
 
 function workerHarness(routes) {
@@ -12,7 +13,7 @@ function workerHarness(routes) {
   const cleared = [];
   const root = path.resolve(__dirname, '..');
   const context = vm.createContext({
-    URL, console, setTimeout, clearTimeout, crypto,
+    URL, console, setTimeout, clearTimeout, crypto: globalThis.crypto || webcrypto,
     DOMParser: new JSDOM('').window.DOMParser,
     fetch: async (url) => {
       const body = routes[new URL(url).pathname + new URL(url).search];
