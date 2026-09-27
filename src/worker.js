@@ -3,7 +3,9 @@ importScripts('model.js', 'parse.js', 'state.js', 'scan.js');
 
 const LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_COUNT = 10;
+const BOOT_ID = crypto.randomUUID();
 const scanner = DalsiDilScan.createScanner({ pagesPerRun: 5, pace: 700 });
+let refreshChain = Promise.resolve();
 
 const store = {
   async get(key) { return (await chrome.storage.local.get(key))[key]; },
@@ -36,12 +38,13 @@ async function publicState() {
   };
 }
 
-async function refresh(full) {
+async function refreshNow(full) {
   const settings = await store.get('settings') || {};
   if (!settings.profile) return publicState();
   const key = DalsiDilState.accountKey(settings.profile.id);
   let account = await store.get(key) || {};
-  const owner = crypto.randomUUID();
+  const owner = `${BOOT_ID}:${crypto.randomUUID()}`;
+  if (account.lease && !String(account.lease.owner || '').startsWith(`${BOOT_ID}:`)) account.lease = null;
   const lease = DalsiDilState.acquireLease(account.lease, owner, Date.now(), LEASE_MS);
   if (!lease) return publicState();
   account.lease = lease;
@@ -51,12 +54,14 @@ async function refresh(full) {
   const continuing = account.scan && !account.scan.complete;
   const incremental = !full && !continuing && !!account.ratings;
   const resume = continuing
-    ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, incremental: false }
-    : { nextPage: 1, ratings: account.ratings || {}, incremental };
+    ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, knownStreak: account.scan.knownStreak, incremental: !!account.scan.incremental }
+    : { nextPage: 1, ratings: (full ? {} : account.ratings || {}), incremental };
   const scanned = await scanner.scanRatings(settings.profile, resume, async (part) => {
     account = DalsiDilState.scanCheckpoint(account, part, Date.now());
+    account.scan.incremental = incremental;
     account.lease = { owner, until: Date.now() + LEASE_MS };
     await store.set(key, account);
+    await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
   });
 
   if (scanned.stopped && scanned.stopped !== 'chunk') {
@@ -70,18 +75,24 @@ async function refresh(full) {
   if (scanned.complete) {
     account = DalsiDilState.publishScan(account, { ratings: scanned.ratings, full: !!scanned.full }, Date.now());
   } else {
-    account.scan = { complete: false, nextPage: scanned.nextPage, ratings: scanned.ratings, updatedAt: Date.now() };
+    account.scan = { complete: false, nextPage: scanned.nextPage, knownStreak: scanned.knownStreak, incremental, ratings: scanned.ratings, updatedAt: Date.now() };
   }
   const candidates = DalsiDilModel.rankedSeries(scanned.ratings);
   const resolved = await scanner.resolve(candidates, settings.count || DEFAULT_COUNT, account.resolved || {});
   account.resolved = resolved.cache;
-  account.items = resolved.items;
+  if (resolved.complete) account.items = resolved.items;
   account.status = resolved.stopped || (scanned.complete ? 'ready' : 'scanning');
   account.message = resolved.stopped && resolved.stopped !== 'challenge' ? `Refresh stopped: ${resolved.stopped}` : '';
   account.lease = null;
   await store.set(key, account);
   if (!scanned.complete) await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
   return publicState();
+}
+
+function refresh(full) {
+  const work = refreshChain.then(() => refreshNow(full));
+  refreshChain = work.catch(() => {});
+  return work;
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {

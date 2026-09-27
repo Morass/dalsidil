@@ -26,12 +26,24 @@ test('a challenge is an explicit blocked outcome and keeps the resume page', asy
 test('an incremental scan stops on a page whose episode signatures are already known', async () => {
   const html = ratingPage({ series: 1, id: 2, title: 'E', season: '01', number: '02', date: '2026-01-01' }, true);
   const fetch = async () => ({ ok: true, text: async () => html });
-  const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {} });
+  const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {}, pagesPerRun: 1 });
   const known = { 1: { seriesId: 1, activity: 1, progress: {}, signatures: { 2: '2:4:2026-01-01' } } };
   const out = await scanner.scanRatings({ href: 'https://www.csfd.cz/uzivatel/7-me/', id: 7 }, { nextPage: 1, ratings: known, incremental: true });
+  assert.equal(out.complete, false, 'one unchanged page is not a safe boundary');
+});
+
+test('an incremental scan checks two unchanged pages before stopping', async () => {
+  let calls = 0;
+  const fetch = async () => {
+    calls += 1;
+    return { ok: true, text: async () => ratingPage({ series: 1, id: calls, title: 'E', season: '01', number: `0${calls}`, date: '2026-01-01' }, true) };
+  };
+  const known = { 1: { seriesId: 1, activity: 1, progress: {}, signatures: { 1: '1:4:2026-01-01', 2: '2:4:2026-01-01' } } };
+  const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {} });
+  const out = await scanner.scanRatings({ href: 'https://www.csfd.cz/uzivatel/7-me/', id: 7 }, { nextPage: 1, ratings: known, incremental: true });
   assert.equal(out.complete, true);
+  assert.equal(calls, 2);
   assert.equal(out.full, false);
-  assert.equal(out.nextPage, 1);
 });
 
 test('resolver skips finished series and returns up to the requested live count', async () => {
@@ -49,4 +61,23 @@ test('resolver skips finished series and returns up to the requested live count'
   assert.equal(out.items.length, 1);
   assert.equal(out.items[0].seriesTitle, 'Live');
   assert.equal(out.asked, 2);
+});
+
+test('a cached finished series is rechecked after its short expiry', async () => {
+  let calls = 0;
+  const fetch = async () => { calls += 1; return { ok: true, text: async () => episodePage(1, 12, 'Returned') }; };
+  const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {}, now: () => 200000000 });
+  const candidate = { seriesId: 1, activity: 1, progress: { href: '/film/1-show/11-episode/prehled/', code: 'S01E01', signature: '11' } };
+  const cache = { 1: { signature: '11', seriesTitle: 'Done', next: null, checkedAt: 1 } };
+  const out = await scanner.resolve([candidate], 1, cache);
+  assert.equal(calls, 1);
+  assert.equal(out.items[0].seriesTitle, 'Returned');
+});
+
+test('a resolver failure returns its status without claiming a complete replacement list', async () => {
+  const scanner = createScanner({ fetch: async () => { throw new Error('offline'); }, parseHTML: () => null });
+  const candidate = { seriesId: 1, activity: 1, progress: { href: '/film/1-show/11-episode/prehled/', code: 'S01E01', signature: '11' } };
+  const out = await scanner.resolve([candidate], 1, {});
+  assert.equal(out.stopped, 'network');
+  assert.equal(out.complete, false);
 });
