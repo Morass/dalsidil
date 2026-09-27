@@ -23,9 +23,14 @@ async function ensureOffscreen() {
 }
 
 async function parsedPage(kind, url, extra) {
+  const message = Object.assign({ target: 'offscreen', kind, url }, extra || {});
   try {
     await ensureOffscreen();
-    return await chrome.runtime.sendMessage(Object.assign({ target: 'offscreen', kind, url }, extra || {}));
+    try { return await chrome.runtime.sendMessage(message); }
+    catch (_) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return await chrome.runtime.sendMessage(message);
+    }
   } catch (_) {
     return { error: 'parser-unavailable' };
   }
@@ -40,7 +45,8 @@ const scanner = DalsiDilScan.createScanner({
 
 const store = {
   async get(key) { return (await chrome.storage.local.get(key))[key]; },
-  async set(key, value) { await chrome.storage.local.set({ [key]: value }); }
+  async set(key, value) { await chrome.storage.local.set({ [key]: value }); },
+  async remove(key) { await chrome.storage.local.remove(key); }
 };
 
 async function publicState() {
@@ -81,6 +87,7 @@ async function detectSignedInProfile() {
   }
   if (!uncertain && signedOut === origins.length) {
     const current = await store.get('settings') || {};
+    if (current.profile) await store.remove(DalsiDilState.accountKey(current.profile.id));
     await store.set('settings', { count: current.count || DEFAULT_COUNT });
     return { state: await publicState(), changed: !!current.profile };
   }
@@ -185,6 +192,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     const settings = await store.get('settings') || {};
     if (!settings.profile) return;
     const account = await store.get(DalsiDilState.accountKey(settings.profile.id)) || {};
+    if (account.lease && account.lease.until > Date.now()) {
+      const wait = Math.max(1, Math.ceil((account.lease.until - Date.now()) / 60000));
+      await chrome.alarms.create('continue-scan', { delayInMinutes: wait });
+      return;
+    }
     if (account.scan && !account.scan.complete) await refresh(false);
   })();
 });

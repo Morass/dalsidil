@@ -21,6 +21,12 @@ test('results link to the next episode and explain progress', () => {
   assert.match(row.querySelector('a').href, /2-next/);
 });
 
+test('a next episode parsed from sk links back to sk', () => {
+  const doc = page();
+  render(doc, { status: 'ready', items: [{ seriesTitle: 'Show', next: { href: '/film/1-show/2-next/prehled/', host: 'https://www.csfd.sk', title: 'Next' } }] });
+  assert.equal(doc.querySelector('a').origin, 'https://www.csfd.sk');
+});
+
 test('an incomplete first scan is named as partial rather than complete', () => {
   const doc = page();
   render(doc, { status: 'scanning', partial: true, page: 6, items: [] });

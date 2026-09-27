@@ -28,7 +28,8 @@
     return {
       seriesId: Number(match[2]),
       episodeId: Number(match[4]),
-      href: `${match[1]}film/${match[2]}-${match[3]}/${match[4]}-${match[5]}/prehled/`
+      href: `${match[1]}film/${match[2]}-${match[3]}/${match[4]}-${match[5]}/prehled/`,
+      host: url.origin
     };
   }
 
@@ -36,14 +37,14 @@
     return !!doc.querySelector('#anubis_challenge') || /making sure you are not a bot/i.test(doc.body && doc.body.textContent || '');
   }
 
-  function parseRatingsPage(doc, firstActivity) {
+  function parseRatingsPage(doc, firstActivity, sourceURL) {
     if (blocked(doc)) return { episodes: [], hasNext: false, blocked: true };
     const episodes = [];
     let activity = Number(firstActivity) || 0;
     for (const row of doc.querySelectorAll('table tr')) {
       const link = row.querySelector('td.name a.film-title-name, a.film-title-name');
       if (!link) continue;
-      const ids = episodeIds(link.getAttribute('href'), doc.baseURI);
+      const ids = episodeIds(link.getAttribute('href'), sourceURL || doc.baseURI);
       const codeMatch = /\bS(\d{1,3})E(\d{1,4})\b/i.exec(row.textContent || '');
       if (!ids) continue;
       const starNode = row.querySelector('.stars');
@@ -65,7 +66,7 @@
     return { episodes, hasNext: !!next && !next.classList.contains('disabled'), blocked: false };
   }
 
-  function parseEpisodePage(doc, expectedSeriesId) {
+  function parseEpisodePage(doc, expectedSeriesId, sourceURL) {
     if (blocked(doc)) return { next: null, blocked: true };
     const expected = Number(expectedSeriesId);
     if (!Number.isInteger(expected) || expected <= 0) return { next: null, blocked: false };
@@ -77,12 +78,12 @@
     const currentMatch = /\bS\d{1,3}E\d{1,4}\b/i.exec((header.querySelector('h1') || {}).textContent || '');
     const currentCode = currentMatch ? currentMatch[0].toUpperCase() : null;
     const breadcrumbPaths = new Set([...header.querySelectorAll('h2 a[href]')]
-      .map((link) => safeUrl(link.getAttribute('href'), doc.baseURI))
+      .map((link) => safeUrl(link.getAttribute('href'), sourceURL || doc.baseURI))
       .filter(Boolean)
       .map((url) => url.pathname));
     let seriesTitle = '';
     for (const link of headerLinks) {
-      const url = safeUrl(link.getAttribute('href'), doc.baseURI);
+      const url = safeUrl(link.getAttribute('href'), sourceURL || doc.baseURI);
       const match = url && /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?film\/(\d+)-[^/]+\/(?:prehled\/)?$/.exec(url.pathname);
       if (match && Number(match[1]) === expected) { seriesTitle = link.textContent.trim(); break; }
     }
@@ -90,7 +91,7 @@
     for (const link of links) {
       const label = `${link.getAttribute('rel') || ''} ${link.textContent || ''} ${link.getAttribute('title') || ''}`;
       if (!/(^|\s)next(\s|$)|další|nasleduj|weiter|suivant|siguiente|następn/i.test(label)) continue;
-      const ids = episodeIds(link.getAttribute('href'), doc.baseURI);
+      const ids = episodeIds(link.getAttribute('href'), sourceURL || doc.baseURI);
       if (ids && ids.seriesId === expected && !breadcrumbPaths.has(ids.href)) {
         const text = link.textContent.trim();
         const code = /\bS\d{1,3}E\d{1,4}\b/i.exec(text);

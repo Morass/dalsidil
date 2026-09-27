@@ -16,6 +16,7 @@ function workerHarness(routes) {
   let offscreenCreates = 0;
   const alarms = [];
   const cleared = [];
+  const parsedRequests = [];
   const root = path.resolve(__dirname, '..');
   const context = vm.createContext({
     URL, console, setTimeout, clearTimeout, crypto: globalThis.crypto || webcrypto,
@@ -27,13 +28,15 @@ function workerHarness(routes) {
     chrome: {
       storage: { local: {
         async get(key) { return { [key]: data[key] }; },
-        async set(values) { Object.assign(data, structuredClone(values)); }
+        async set(values) { Object.assign(data, structuredClone(values)); },
+        async remove(key) { delete data[key]; }
       } },
       runtime: {
         onMessage: { addListener(fn) { listener = fn; } },
         getURL(pathname) { return `chrome-extension://test/${pathname}`; },
         async getContexts() { return offscreenExists ? [{}] : []; },
         async sendMessage(message) {
+          parsedRequests.push(message.url);
           const target = new URL(message.url);
           const key = target.pathname + target.search;
           const route = routes[target.href] === undefined ? routes[key] : routes[target.href];
@@ -45,8 +48,8 @@ function workerHarness(routes) {
           base.href = message.url;
           doc.head.prepend(base);
           if (message.kind === 'profile') return { parsed: profile.detectProfile(doc, message.url) };
-          if (message.kind === 'ratings') return { parsed: parse.parseRatingsPage(doc, message.activity) };
-          if (message.kind === 'episode') return { parsed: parse.parseEpisodePage(doc, message.seriesId) };
+          if (message.kind === 'ratings') return { parsed: parse.parseRatingsPage(doc, message.activity, message.url) };
+          if (message.kind === 'episode') return { parsed: parse.parseEpisodePage(doc, message.seriesId, message.url) };
           return { error: 'unknown-parser-request' };
         }
       },
@@ -64,7 +67,7 @@ function workerHarness(routes) {
   };
   vm.runInContext(fs.readFileSync(path.join(root, 'src/worker.js'), 'utf8'), context, { filename: 'worker.js' });
   const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
-  return { send, data, alarms, cleared, fireAlarm(name) { alarmListener({ name }); }, get offscreenCreates() { return offscreenCreates; } };
+  return { send, data, alarms, cleared, parsedRequests, fireAlarm(name) { alarmListener({ name }); }, get offscreenCreates() { return offscreenCreates; } };
 }
 
 test('real worker flow turns a profile rating into a linked next episode', async () => {
@@ -115,10 +118,12 @@ test('definite logout clears the previously selected account', async () => {
   const signedOut = '<header class="page-header user-not-logged"></header>';
   const app = workerHarness({ 'https://www.csfd.cz/': signedOut, 'https://www.csfd.sk/': signedOut });
   app.data.settings = { count: 12, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
+  app.data['account:7'] = { items: [{ private: 'derived' }] };
   const detected = await app.send({ type: 'detect' });
   assert.equal(detected.state.status, 'setup');
   assert.equal(app.data.settings.profile, undefined);
   assert.equal(app.data.settings.count, 12);
+  assert.equal(app.data['account:7'], undefined);
 });
 
 test('login detection preserves a setting changed while its request is in flight', async () => {
@@ -140,6 +145,31 @@ test('an offscreen parser failure releases the scan lease with an explicit statu
   const state = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
   assert.equal(state.status, 'parser-unavailable');
   assert.equal(app.data['account:7'].lease, null);
+});
+
+test('a just-created offscreen parser gets one startup retry', async () => {
+  let calls = 0;
+  const ratings = '<table></table>';
+  const app = workerHarness({ '/uzivatel/7-me/hodnoceni/': async () => {
+    calls += 1;
+    if (calls === 1) throw new Error('Receiving end does not exist');
+    return ratings;
+  } });
+  const state = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  assert.equal(state.status, 'ready');
+  assert.equal(calls, 2);
+});
+
+test('a sk profile keeps ratings, episode resolution and result links on sk', async () => {
+  const ratingsURL = 'https://www.csfd.sk/uzivatel/7-me/hodnoceni/';
+  const episodeURL = 'https://www.csfd.sk/film/9-show/11-one/prehled/';
+  const ratings = '<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>';
+  const episode = '<header><h2><a href="/film/9-show/prehled/">Show</a></h2><nav><a rel="next" href="/film/9-show/12-two/prehled/">next</a></nav></header>';
+  const app = workerHarness({ [ratingsURL]: ratings, [episodeURL]: episode });
+  const state = await app.send({ type: 'profile', href: 'https://www.csfd.sk/uzivatel/7-me/' });
+  assert.equal(state.items[0].next.host, 'https://www.csfd.sk');
+  assert.ok(app.parsedRequests.includes(episodeURL));
+  assert.equal(app.parsedRequests.some((url) => url.startsWith('https://www.csfd.cz/film/')), false);
 });
 
 test('an early continuation alarm is rescheduled until the persisted lease expires', async () => {

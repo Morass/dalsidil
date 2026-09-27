@@ -30,7 +30,7 @@
       const detail = doc.createElement('small');
       detail.textContent = `after ${item.after || 'your last rated episode'}`;
       const link = doc.createElement('a');
-      link.href = new URL(item.next.href, item.host || 'https://www.csfd.cz/').href;
+      link.href = new URL(item.next.href, item.next.host || item.host || 'https://www.csfd.cz/').href;
       link.target = '_blank';
       link.rel = 'noreferrer';
       link.textContent = item.next.code ? `${item.next.code}${item.next.title ? ` · ${item.next.title}` : ''}` : (item.next.title || 'Next episode');

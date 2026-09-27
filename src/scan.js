@@ -73,7 +73,7 @@
         let entry = resolved[series.seriesId];
         const staleFinished = entry && !entry.next && now() - Number(entry.checkedAt || 0) >= finishedMaxAge;
         if (!entry || entry.signature !== signature || staleFinished) {
-          const url = new URL(series.progress.href, opt.origin || 'https://www.csfd.cz/').href;
+          const url = new URL(series.progress.href, series.progress.host || opt.origin || 'https://www.csfd.cz/').href;
           const loaded = loadEpisode ? await loadEpisode(url, series.seriesId) : await getDocument(url);
           asked += 1;
           if (loaded.error) {
