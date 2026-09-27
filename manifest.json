@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Další díl",
+  "description": "Find the next episodes of series you rate on ČSFD.",
+  "version": "0.1.0",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["https://www.csfd.cz/*", "https://www.csfd.sk/*"],
+  "background": { "service_worker": "src/worker.js" },
+  "action": {
+    "default_title": "Další díl",
+    "default_popup": "popup/popup.html"
+  }
+}
