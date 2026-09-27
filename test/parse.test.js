@@ -16,6 +16,14 @@ test('ratings parser keeps episode identity, S/E code, stars, date and next-page
   assert.equal(out.hasNext, true);
 });
 
+test('a real-style nested episode URL is enough when the ratings row omits S/E text', () => {
+  const page = doc(`<table><tr><td class="name"><a class="film-title-name" href="/film/237899-columbo/43366-case/prehled/">A Case</a></td><td><span class="stars stars-4"></span><time datetime="2026-09-20"></time></td></tr></table>`);
+  const out = parseRatingsPage(page, 9);
+  assert.equal(out.episodes.length, 1);
+  assert.equal(out.episodes[0].code, null);
+  assert.equal(out.episodes[0].episodeId, 43366);
+});
+
 test('film ratings and malformed cross-origin links are ignored', () => {
   const page = doc(`<table><tr><td class="name"><a class="film-title-name" href="/film/2294-pulp-fiction/prehled/">Film</a></td></tr><tr><td class="name"><a class="film-title-name" href="https://evil.example/film/1-a/2-b/">Bad</a> (S01E01)</td></tr></table>`);
   assert.deepEqual(parseRatingsPage(page, 1).episodes, []);
@@ -40,8 +48,16 @@ test('episode parser follows the canonical next link within the same series', ()
   const page = doc(`<header><h2><a href="/film/237899-columbo/prehled/">Columbo</a> - <a href="/film/237899-columbo/626083-season-5/prehled/">5. série</a></h2><h1>A Case (S05E02)</h1><nav><a href="/film/237899-columbo/40000-prev/prehled/">předchozí</a><a rel="next" href="/film/237899-columbo/44456-next/prehled/">další</a></nav></header>`);
   const out = parseEpisodePage(page, 237899);
   assert.equal(out.seriesTitle, 'Columbo');
+  assert.equal(out.currentCode, 'S05E02');
   assert.equal(out.next.code, null);
   assert.match(out.next.href, /44456-next/);
+});
+
+test('live ČSFD shape keeps episode navigation in a separate series-control', () => {
+  const page = doc(`<div class="film-header"><div class="film-header-name"><h2><a href="/film/9-show/prehled/">Show</a></h2><h1>One (S01E01)</h1></div></div><div class="series-control"><a href="/film/9-show/10-prev/prehled/">předchozí</a><a href="/film/9-show/12-next/prehled/">další</a></div>`);
+  const out = parseEpisodePage(page, 9);
+  assert.equal(out.currentCode, 'S01E01');
+  assert.match(out.next.href, /12-next/);
 });
 
 test('episode parser reports finished when no same-series next link exists', () => {

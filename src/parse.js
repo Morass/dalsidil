@@ -45,13 +45,13 @@
       if (!link) continue;
       const ids = episodeIds(link.getAttribute('href'), doc.baseURI);
       const codeMatch = /\bS(\d{1,3})E(\d{1,4})\b/i.exec(row.textContent || '');
-      if (!ids || !codeMatch) continue;
+      if (!ids) continue;
       const starNode = row.querySelector('.stars');
       const starMatch = /(?:^|\s)stars-(\d)(?:\s|$)/.exec(starNode && starNode.className || '');
       if (!starMatch) continue;
       const time = row.querySelector('time');
       const date = time && (time.getAttribute('datetime') || time.textContent.trim()) || '';
-      const code = `S${codeMatch[1].padStart(2, '0')}E${codeMatch[2].padStart(2, '0')}`;
+      const code = codeMatch ? `S${codeMatch[1].padStart(2, '0')}E${codeMatch[2].padStart(2, '0')}` : null;
       episodes.push(Object.assign(ids, {
         code,
         title: link.textContent.trim(),
@@ -71,13 +71,17 @@
     if (!Number.isInteger(expected) || expected <= 0) return { next: null, blocked: false };
     const header = doc.querySelector('.film-header, header');
     if (!header) return { next: null, blocked: false };
-    const links = [...header.querySelectorAll('a[href]')];
+    const navigation = doc.querySelector('.series-control') || header;
+    const headerLinks = [...header.querySelectorAll('a[href]')];
+    const links = [...navigation.querySelectorAll('a[href]')];
+    const currentMatch = /\bS\d{1,3}E\d{1,4}\b/i.exec((header.querySelector('h1') || {}).textContent || '');
+    const currentCode = currentMatch ? currentMatch[0].toUpperCase() : null;
     const breadcrumbPaths = new Set([...header.querySelectorAll('h2 a[href]')]
       .map((link) => safeUrl(link.getAttribute('href'), doc.baseURI))
       .filter(Boolean)
       .map((url) => url.pathname));
     let seriesTitle = '';
-    for (const link of links) {
+    for (const link of headerLinks) {
       const url = safeUrl(link.getAttribute('href'), doc.baseURI);
       const match = url && /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?film\/(\d+)-[^/]+\/(?:prehled\/)?$/.exec(url.pathname);
       if (match && Number(match[1]) === expected) { seriesTitle = link.textContent.trim(); break; }
@@ -94,7 +98,7 @@
         break;
       }
     }
-    return { seriesTitle, next, blocked: false };
+    return { seriesTitle, currentCode, next, blocked: false };
   }
 
   return { safeUrl, episodeIds, parseRatingsPage, parseEpisodePage };

@@ -4,7 +4,7 @@ const { JSDOM } = require('jsdom');
 const { createScanner } = require('../src/scan.js');
 
 const ratingPage = (episode, next = false) => `<table><tr><td class="name"><a class="film-title-name" href="/film/${episode.series}-show/${episode.id}-episode/prehled/">${episode.title}</a> (S${episode.season}E${episode.number})</td><td><span class="stars stars-4"></span><time datetime="${episode.date}"></time></td></tr></table>${next ? '<a class="page-next">next</a>' : ''}`;
-const episodePage = (series, nextId, title = 'Show') => `<header><h2><a href="/film/${series}-show/prehled/">${title}</a></h2>${nextId ? `<nav><a rel="next" href="/film/${series}-show/${nextId}-next/prehled/">next</a></nav>` : ''}</header>`;
+const episodePage = (series, nextId, title = 'Show') => `<header><h2><a href="/film/${series}-show/prehled/">${title}</a></h2><h1>Current (S01E01)</h1>${nextId ? `<nav><a rel="next" href="/film/${series}-show/${nextId}-next/prehled/">next</a></nav>` : ''}</header>`;
 
 test('a scan checkpoints each page and stops at the configured chunk bound', async () => {
   const checkpoints = [];
@@ -60,6 +60,7 @@ test('resolver skips finished series and returns up to the requested live count'
   const out = await scanner.resolve(candidates, 1, {});
   assert.equal(out.items.length, 1);
   assert.equal(out.items[0].seriesTitle, 'Live');
+  assert.equal(out.items[0].after, 'S01E01');
   assert.equal(out.asked, 2);
 });
 

@@ -16,7 +16,7 @@ Open the extension and paste the address of your ČSFD profile, such as `https:/
 
 The list is ordered by the most recent episode-rating activity. Each row shows the furthest normally numbered episode you rated and links to ČSFD's following episode. Finished series are left out. The default list has 10 series; open **Settings** to choose 1–25.
 
-Use **↻** to check for new ratings. If ČSFD asks for a browser check, open ČSFD normally, complete it, and refresh the extension again.
+Use **↻** to check for new ratings. Settings also has **Full rescan**, which reconciles removed ratings and rebuilds progress from the complete history. If ČSFD asks for a browser check, open ČSFD normally, complete it, and refresh the extension again.
 
 ## What it touches
 
@@ -27,7 +27,7 @@ It never changes ratings or other ČSFD data.
 ## Limits
 
 - A vote is treated as evidence of progress; unrated watched episodes cannot be inferred.
-- Rating an older episode later makes the series recent but does not move progress backward.
+- Once progress for a series has been established, rating an older episode later makes the series recent but does not move progress backward. On the first-ever scan, ČSFD's ratings table omits S/E labels, so an unusual late vote on an older episode can initially be taken as the current position.
 - Deleted ratings are noticed by a full rescan, not necessarily by the next short refresh.
 - Specials without normal S/E numbering follow ČSFD's own navigation where possible.
 - Page-layout changes or ČSFD's bot check can temporarily stop a refresh. Cached results remain available.

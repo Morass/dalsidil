@@ -43,6 +43,7 @@
     const count = doc.querySelector('#count');
     const profile = doc.querySelector('#profile');
     const refresh = doc.querySelector('#refresh');
+    const fullRefresh = doc.querySelector('#full-refresh');
     const saved = await api.send({ type: 'state' });
     count.value = saved.count || 10;
     profile.value = saved.profile && saved.profile.href || '';
@@ -54,6 +55,11 @@
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
       try { render(doc, await api.send({ type: 'refresh', full: false })); }
       finally { refresh.disabled = false; }
+    });
+    fullRefresh.addEventListener('click', async () => {
+      fullRefresh.disabled = true;
+      try { render(doc, await api.send({ type: 'refresh', full: true })); }
+      finally { fullRefresh.disabled = false; }
     });
   }
 

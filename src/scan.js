@@ -74,11 +74,11 @@
           if (loaded.error) return { items, cache: resolved, asked, stopped: loaded.error, complete: false };
           const parsed = parse.parseEpisodePage(loaded.doc, series.seriesId);
           if (parsed.blocked) return { items, cache: resolved, asked, stopped: 'challenge', complete: false };
-          entry = { signature, seriesTitle: parsed.seriesTitle, next: parsed.next, checkedAt: now() };
+          entry = { signature, seriesTitle: parsed.seriesTitle, currentCode: parsed.currentCode, next: parsed.next, checkedAt: now() };
           resolved[series.seriesId] = entry;
           if (pace) await sleep(pace);
         }
-        if (entry.next) items.push({ seriesId: series.seriesId, seriesTitle: entry.seriesTitle || `Series ${series.seriesId}`, next: entry.next, after: series.progress.code || series.progress.title });
+        if (entry.next) items.push({ seriesId: series.seriesId, seriesTitle: entry.seriesTitle || `Series ${series.seriesId}`, next: entry.next, after: entry.currentCode || series.progress.code || series.progress.title });
       }
       return { items, cache: resolved, asked, stopped: null, complete: true };
     }
