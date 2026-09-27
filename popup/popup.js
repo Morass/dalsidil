@@ -19,8 +19,9 @@
   };
 
   function statusMessage(state) {
+    if (state.message && !/^Refresh stopped:/.test(state.message)) return state.message;
     if (/^http-\d+$/.test(state.status || '')) return `ČSFD returned error ${state.status.slice(5)}. Cached results are shown below.`;
-    if (messages[state.status] != null) return messages[state.status];
+    if (messages[state.status]) return messages[state.status];
     if (state.message) return state.message;
     return state.status ? `Refresh stopped: ${state.status}. Try again.` : '';
   }
@@ -32,7 +33,7 @@
     const items = state.items || [];
     let note = statusMessage(state);
     if (state.status === 'scanning') note = `Still scanning your ratings — page ${state.page || 1}. Cached results stay usable.`;
-    if (state.status === 'ready' && !items.length) note = messages.empty;
+    if (state.status === 'ready' && !items.length && !note) note = messages.empty;
     status.textContent = note;
     status.hidden = !note;
     const busy = ['detecting', 'scanning', 'resolving'].includes(state.status);
@@ -63,9 +64,12 @@
     let saved = { status: 'detecting', count: 10, items: [] };
     const isBusy = (state) => ['detecting', 'scanning', 'resolving'].includes(state && state.status);
     const schedule = api.schedule || ((fn) => setTimeout(fn, 1500));
+    let pollScheduled = false;
     const watchBusy = () => {
-      if (!isBusy(saved)) return;
+      if (!isBusy(saved) || pollScheduled) return;
+      pollScheduled = true;
       schedule(async () => {
+        pollScheduled = false;
         try {
           saved = await api.send({ type: 'state' });
           render(doc, saved);
@@ -77,13 +81,13 @@
     };
     render(doc, saved);
     try { saved = await api.send({ type: 'state' }); }
-    catch (error) { render(doc, { status: 'error', items: [], message: error.message }); return; }
+    catch (_) { render(doc, { status: 'error', items: [], message: '' }); return; }
     count.value = saved.count || 10;
     profile.value = saved.profile && saved.profile.href || '';
     render(doc, Object.assign({}, saved, { status: 'detecting', message: '' }));
     let detected;
     try { detected = await api.send({ type: 'detect' }); }
-    catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); return; }
+    catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); return; }
     if (!detected || !detected.state) {
       render(doc, Object.assign({}, saved, { status: 'error', message: '' }));
       return;
@@ -94,32 +98,36 @@
     if (detected.changed || saved.status === 'idle') {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: saved.page || 1 }));
       try { saved = await api.send({ type: 'refresh', full: false }); render(doc, saved); }
-      catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
     }
     watchBusy();
     count.addEventListener('change', async () => {
       render(doc, Object.assign({}, saved, { status: 'resolving' }));
       try { saved = await api.send({ type: 'count', count: Number(count.value) }); render(doc, saved); }
-      catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
+      watchBusy();
     });
     profile.addEventListener('change', async () => {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
       try { saved = await api.send({ type: 'profile', href: profile.value }); render(doc, saved); }
-      catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
+      watchBusy();
     });
     refresh.addEventListener('click', async () => {
       refresh.disabled = true;
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
       try { saved = await api.send({ type: 'refresh', full: false }); render(doc, saved); }
-      catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
       finally { refresh.disabled = false; }
+      watchBusy();
     });
     fullRefresh.addEventListener('click', async () => {
       fullRefresh.disabled = true;
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
       try { saved = await api.send({ type: 'refresh', full: true }); render(doc, saved); }
-      catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
       finally { fullRefresh.disabled = false; }
+      watchBusy();
     });
   }
 

@@ -190,6 +190,15 @@ test('an early continuation alarm is rescheduled until the persisted lease expir
   assert.ok(app.alarms.some((alarm) => alarm.name === 'continue-scan' && alarm.options.delayInMinutes >= 1));
 });
 
+test('a recovery alarm resumes scanning when interruption happened before page one checkpointed', async () => {
+  const app = workerHarness({ '/uzivatel/7-me/hodnoceni/': '<table></table>' });
+  app.data.settings = { count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = { status: 'scanning', lease: { owner: 'gone-worker', until: Date.now() - 1 } };
+  app.fireAlarm('continue-scan');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(app.data['account:7'].status, 'ready');
+});
+
 test('a profile URL copied without its trailing slash is accepted', async () => {
   const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a></td><td><span class="stars stars-4"></span></td></tr></table>`;
   const episode = `<div class="film-header"><h2><a href="/film/9-show/prehled/">Show</a></h2><h1>One (S01E01)</h1></div>`;

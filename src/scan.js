@@ -96,5 +96,5 @@
     return { scanRatings, resolve, ratingsUrl };
   }
 
-  return { createScanner };
+  return { createScanner, RESOLVER_VERSION };
 });

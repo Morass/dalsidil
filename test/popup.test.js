@@ -48,6 +48,14 @@ test('every failure family is rendered as an actionable visible status', () => {
   }
 });
 
+test('a specific account or input warning is not hidden by a generic status', () => {
+  const doc = page();
+  render(doc, { status: 'ready', items: [], message: 'Could not confirm the current ČSFD login.' });
+  assert.match(doc.querySelector('#status').textContent, /could not confirm/i);
+  render(doc, { status: 'error', items: [], message: 'That is not a ČSFD profile URL.' });
+  assert.match(doc.querySelector('#status').textContent, /not a ČSFD profile/i);
+});
+
 function startupPage() {
   return new JSDOM('<main><p id="status"></p><ol id="results"></ol><input id="count"><input id="profile"><button id="refresh"></button><button id="full-refresh"></button></main>').window.document;
 }
@@ -158,4 +166,21 @@ test('a refresh transport failure replaces the spinner with a visible error', as
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
   assert.match(doc.querySelector('#status').textContent, /unexpected failed/i);
+});
+
+test('a button-started partial refresh begins background progress polling', async () => {
+  const doc = startupPage();
+  const callbacks = [];
+  const ready = { status: 'ready', count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' }, items: [] };
+  await start(doc, {
+    schedule(fn) { callbacks.push(fn); },
+    async send(message) {
+      if (message.type === 'detect') return { changed: false, state: ready };
+      if (message.type === 'refresh') return { ...ready, status: 'scanning', page: 6 };
+      return ready;
+    }
+  });
+  doc.querySelector('#refresh').click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(callbacks.length, 1);
 });

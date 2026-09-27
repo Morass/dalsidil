@@ -54,7 +54,7 @@ async function publicState() {
   if (!settings.profile) return { status: 'setup', count: settings.count || DEFAULT_COUNT, items: [], message: 'Add your ČSFD profile URL to begin.' };
   const account = await store.get(DalsiDilState.accountKey(settings.profile.id)) || {};
   const items = account.items || [];
-  const needsUpgrade = items.some((item) => !account.resolved || !account.resolved[item.seriesId] || account.resolved[item.seriesId].version !== 2);
+  const needsUpgrade = items.some((item) => !account.resolved || !account.resolved[item.seriesId] || account.resolved[item.seriesId].version !== DalsiDilScan.RESOLVER_VERSION);
   return {
     status: account.status || (account.items ? 'ready' : 'idle'),
     count: settings.count || DEFAULT_COUNT,
@@ -216,6 +216,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       await chrome.alarms.create('continue-scan', { delayInMinutes: wait });
       return;
     }
-    if (account.scan && !account.scan.complete) await refresh(false);
+    if (account.status === 'scanning' || (account.scan && !account.scan.complete)) await refresh(false);
   })();
 });
