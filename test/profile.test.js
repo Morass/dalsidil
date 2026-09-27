@@ -22,6 +22,11 @@ test('a logged-in header without its own profile link is unknown', () => {
   assert.deepEqual(detectProfile(doc), { state: 'unknown', profile: null });
 });
 
+test('a bot challenge is unknown rather than a definite logout', () => {
+  const doc = documentFor('<main id="anubis_challenge">Making sure you are not a bot</main>');
+  assert.deepEqual(detectProfile(doc), { state: 'unknown', profile: null });
+});
+
 test('profile addresses are normalized and foreign hosts are rejected', () => {
   assert.deepEqual(parseProfile('https://www.csfd.sk/en/user/8-reader'), { id: 8, href: 'https://www.csfd.sk/en/user/8-reader/' });
   assert.equal(parseProfile('https://example.com/uzivatel/8-reader/'), null);

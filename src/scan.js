@@ -6,6 +6,7 @@
   else root.DalsiDilScan = api;
 })(typeof globalThis === 'object' ? globalThis : this, function (parse, model) {
   'use strict';
+  const RESOLVER_VERSION = 2;
 
   function createScanner(options) {
     const opt = options || {};
@@ -72,8 +73,8 @@
         const signature = series.progress && series.progress.signature || String(series.progress && series.progress.episodeId || '');
         let entry = resolved[series.seriesId];
         const staleFinished = entry && !entry.next && now() - Number(entry.checkedAt || 0) >= finishedMaxAge;
-        const unresolvedTitle = entry && (!entry.seriesTitle || /^Series \d+$/.test(entry.seriesTitle));
-        if (!entry || entry.signature !== signature || staleFinished || unresolvedTitle) {
+        const oldParser = entry && entry.version !== RESOLVER_VERSION;
+        if (!entry || entry.signature !== signature || staleFinished || oldParser) {
           const url = new URL(series.progress.href, series.progress.host || opt.origin || 'https://www.csfd.cz/').href;
           const loaded = loadEpisode ? await loadEpisode(url, series.seriesId) : await getDocument(url);
           asked += 1;
@@ -83,7 +84,7 @@
           }
           const parsed = loaded.parsed || parse.parseEpisodePage(loaded.doc, series.seriesId);
           if (parsed.blocked) return { items, cache: resolved, asked, stopped: 'challenge', complete: false };
-          entry = { signature, seriesTitle: parsed.seriesTitle, currentCode: parsed.currentCode, next: parsed.next, checkedAt: now() };
+          entry = { version: RESOLVER_VERSION, signature, seriesTitle: parsed.seriesTitle, currentCode: parsed.currentCode, next: parsed.next, checkedAt: now() };
           resolved[series.seriesId] = entry;
           if (pace) await sleep(pace);
         }

@@ -53,11 +53,14 @@ async function publicState() {
   const settings = await store.get('settings') || { count: DEFAULT_COUNT };
   if (!settings.profile) return { status: 'setup', count: settings.count || DEFAULT_COUNT, items: [], message: 'Add your ČSFD profile URL to begin.' };
   const account = await store.get(DalsiDilState.accountKey(settings.profile.id)) || {};
+  const items = account.items || [];
+  const needsUpgrade = items.some((item) => !account.resolved || !account.resolved[item.seriesId] || account.resolved[item.seriesId].version !== 2);
   return {
     status: account.status || (account.items ? 'ready' : 'idle'),
     count: settings.count || DEFAULT_COUNT,
     profile: settings.profile,
-    items: account.items || [],
+    items,
+    needsUpgrade,
     partial: !!(account.scan && !account.scan.complete),
     page: account.scan && account.scan.nextPage,
     message: account.message || ''
@@ -82,8 +85,7 @@ async function detectSignedInProfile() {
         const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
         await store.set('settings', Object.assign({}, current, { profile: found.profile, count: current.count || DEFAULT_COUNT }));
         const state = await publicState();
-        const needsNames = state.items.some((item) => !item.seriesTitle || /^Series \d+$/.test(item.seriesTitle));
-        return { state, changed: changed || needsNames };
+        return { state, changed: changed || state.needsUpgrade };
       }
     } catch (_) { uncertain = true; }
   }
@@ -116,6 +118,7 @@ async function refreshNow(full) {
   account.lease = lease;
   account.status = 'scanning';
   await store.set(key, account);
+  await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
 
   const continuing = !full && account.scan && !account.scan.complete;
   const incremental = !full && !continuing && !!account.ratings;
@@ -159,7 +162,18 @@ async function refreshNow(full) {
 }
 
 function refresh(full) {
-  const work = refreshChain.then(() => refreshNow(full));
+  const work = refreshChain.then(() => refreshNow(full)).catch(async () => {
+    const settings = await store.get('settings') || {};
+    if (!settings.profile) return { status: 'error', count: settings.count || DEFAULT_COUNT, items: [], message: '' };
+    const key = DalsiDilState.accountKey(settings.profile.id);
+    const account = await store.get(key) || {};
+    account.status = 'error';
+    account.message = '';
+    account.lease = null;
+    await store.set(key, account);
+    await chrome.alarms.clear('continue-scan');
+    return publicState();
+  });
   refreshChain = work.catch(() => {});
   return work;
 }
@@ -184,7 +198,10 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     }
     if (message.type === 'refresh') return refresh(!!message.full);
     return publicState();
-  })().then(respond, (error) => respond({ status: 'error', items: [], message: error.message }));
+  })().then(respond, async () => {
+    try { respond(Object.assign(await publicState(), { status: 'error', message: '' })); }
+    catch (_) { respond({ status: 'error', count: DEFAULT_COUNT, items: [], message: '' }); }
+  });
   return true;
 });
 

@@ -114,6 +114,15 @@ test('failed login detection names that cached account identity was not confirme
   assert.match(detected.state.message, /could not confirm.*login/i);
 });
 
+test('an unexpected worker error preserves cached rows in its visible error state', async () => {
+  const app = workerHarness({});
+  app.data.settings = { count: 10, profile: { id: 7, href: 'not a URL' } };
+  app.data['account:7'] = { items: [{ seriesId: 1, seriesTitle: 'Cached Show', next: { href: '/film/1-show/2-next/prehled/' } }] };
+  const state = await app.send({ type: 'detect' });
+  assert.equal(state.status, 'error');
+  assert.equal(state.items[0].seriesTitle, 'Cached Show');
+});
+
 test('definite logout clears the previously selected account', async () => {
   const signedOut = '<header class="page-header user-not-logged"></header>';
   const app = workerHarness({ 'https://www.csfd.cz/': signedOut, 'https://www.csfd.sk/': signedOut });

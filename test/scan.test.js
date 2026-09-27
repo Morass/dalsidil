@@ -80,10 +80,20 @@ test('a cached numeric fallback title is re-read after the parser learns real na
   const fetch = async () => { calls += 1; return { ok: true, text: async () => episodePage(1, 12, 'Actual Show') }; };
   const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {} });
   const candidate = { seriesId: 1, activity: 1, progress: { href: '/film/1-show/11-episode/prehled/', code: 'S01E01', signature: '11' } };
-  const cache = { 1: { signature: '11', seriesTitle: 'Series 1', next: { href: '/film/1-show/12-next/prehled/' }, checkedAt: Date.now() } };
+  const cache = { 1: { signature: '11', seriesTitle: '', next: { href: '/film/1-show/12-next/prehled/' }, checkedAt: Date.now() } };
   const out = await scanner.resolve([candidate], 1, cache);
   assert.equal(calls, 1);
   assert.equal(out.items[0].seriesTitle, 'Actual Show');
+});
+
+test('a current parser result with no title does not fetch forever', async () => {
+  let calls = 0;
+  const scanner = createScanner({ fetch: async () => { calls += 1; throw new Error('should stay cached'); } });
+  const candidate = { seriesId: 1, activity: 1, progress: { href: '/film/1-show/11-episode/prehled/', code: 'S01E01', signature: '11' } };
+  const cache = { 1: { version: 2, signature: '11', seriesTitle: '', next: { href: '/film/1-show/12-next/prehled/' }, checkedAt: Date.now() } };
+  const out = await scanner.resolve([candidate], 1, cache);
+  assert.equal(calls, 0);
+  assert.equal(out.items[0].seriesTitle, 'Series 1');
 });
 
 test('a resolver failure returns its status without claiming a complete replacement list', async () => {

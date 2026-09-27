@@ -62,7 +62,8 @@ test('live ČSFD shape keeps episode navigation in a separate series-control', (
 
 test('the site account header is not mistaken for the film header', () => {
   const page = doc(`<header class="page-header user-logged"><a class="profile" href="/uzivatel/7-me/">Me</a></header>
-    <main><header class="film-header"><div class="film-header-name"><h1><a href="/film/340866-show/prehled/">Actual Show</a> - Pilot (S01E01)</h1>
+    <main><div class="film-series-content"><h2><a href="/film/340866-show/prehled/">Actual Show</a> - <a href="/film/340866-show/20-season/prehled/">Season 1</a></h2></div>
+    <header class="film-header"><div class="film-header-name"><h1>Pilot (S01E01)</h1>
     <div class="series-control"><a class="next-episode" title="další" href="/film/340866-show/22-second/prehled/">další</a></div></div></header></main>`);
   const parsed = parseEpisodePage(page, 340866);
   assert.equal(parsed.seriesTitle, 'Actual Show');

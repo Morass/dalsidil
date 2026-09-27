@@ -28,6 +28,9 @@
   }
 
   function detectProfile(doc, baseURL) {
+    if (doc.querySelector('#anubis_challenge') || /making sure you are not a bot/i.test(doc.body && doc.body.textContent || '')) {
+      return { state: 'unknown', profile: null };
+    }
     if (loginFlag(doc) === false) return { state: 'out', profile: null };
     const base = baseURL || doc.baseURI;
     const links = doc.querySelectorAll('.header-bar a.profile[href*="/uzivatel/"], .header-bar a.profile[href*="/user/"]');

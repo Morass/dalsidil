@@ -19,9 +19,10 @@
   };
 
   function statusMessage(state) {
-    if (state.message) return state.message;
     if (/^http-\d+$/.test(state.status || '')) return `ČSFD returned error ${state.status.slice(5)}. Cached results are shown below.`;
-    return messages[state.status] || (state.status ? `Refresh stopped: ${state.status}. Try again.` : '');
+    if (messages[state.status] != null) return messages[state.status];
+    if (state.message) return state.message;
+    return state.status ? `Refresh stopped: ${state.status}. Try again.` : '';
   }
 
   function render(doc, state) {
@@ -60,6 +61,20 @@
     const refresh = doc.querySelector('#refresh');
     const fullRefresh = doc.querySelector('#full-refresh');
     let saved = { status: 'detecting', count: 10, items: [] };
+    const isBusy = (state) => ['detecting', 'scanning', 'resolving'].includes(state && state.status);
+    const schedule = api.schedule || ((fn) => setTimeout(fn, 1500));
+    const watchBusy = () => {
+      if (!isBusy(saved)) return;
+      schedule(async () => {
+        try {
+          saved = await api.send({ type: 'state' });
+          render(doc, saved);
+          watchBusy();
+        } catch (_) {
+          render(doc, Object.assign({}, saved, { status: 'error', message: '' }));
+        }
+      });
+    };
     render(doc, saved);
     try { saved = await api.send({ type: 'state' }); }
     catch (error) { render(doc, { status: 'error', items: [], message: error.message }); return; }
@@ -69,14 +84,19 @@
     let detected;
     try { detected = await api.send({ type: 'detect' }); }
     catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); return; }
+    if (!detected || !detected.state) {
+      render(doc, Object.assign({}, saved, { status: 'error', message: '' }));
+      return;
+    }
     saved = detected.state;
     profile.value = saved.profile && saved.profile.href || '';
     render(doc, saved);
-    if (detected.changed) {
+    if (detected.changed || saved.status === 'idle') {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: saved.page || 1 }));
       try { saved = await api.send({ type: 'refresh', full: false }); render(doc, saved); }
       catch (error) { render(doc, Object.assign({}, saved, { status: 'error', message: error.message })); }
     }
+    watchBusy();
     count.addEventListener('change', async () => {
       render(doc, Object.assign({}, saved, { status: 'resolving' }));
       try { saved = await api.send({ type: 'count', count: Number(count.value) }); render(doc, saved); }

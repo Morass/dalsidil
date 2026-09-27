@@ -73,11 +73,11 @@
     const header = doc.querySelector('.film-header') || doc.querySelector('header');
     if (!header) return { next: null, blocked: false };
     const navigation = doc.querySelector('.series-control') || header;
-    const headerLinks = [...header.querySelectorAll('a[href]')];
+    const headerLinks = [...doc.querySelectorAll('.film-series-content a[href], .film-header a[href], header h2 a[href]')];
     const links = [...navigation.querySelectorAll('a[href]')];
     const currentMatch = /\bS\d{1,3}E\d{1,4}\b/i.exec((header.querySelector('h1') || {}).textContent || '');
     const currentCode = currentMatch ? currentMatch[0].toUpperCase() : null;
-    const breadcrumbPaths = new Set([...header.querySelectorAll('h2 a[href]')]
+    const breadcrumbPaths = new Set([...doc.querySelectorAll('.film-series-content h2 a[href], .film-header h2 a[href], header h2 a[href]')]
       .map((link) => safeUrl(link.getAttribute('href'), sourceURL || doc.baseURI))
       .filter(Boolean)
       .map((url) => url.pathname));
@@ -85,7 +85,7 @@
     for (const link of headerLinks) {
       const url = safeUrl(link.getAttribute('href'), sourceURL || doc.baseURI);
       const match = url && /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?film\/(\d+)-[^/]+\/(?:prehled\/)?$/.exec(url.pathname);
-      if (match && Number(match[1]) === expected) { seriesTitle = link.textContent.trim(); break; }
+      if (match && Number(match[1]) === expected && link.textContent.trim()) { seriesTitle = link.textContent.trim(); break; }
     }
     let next = null;
     for (const link of links) {

@@ -42,7 +42,7 @@ test('every failure family is rendered as an actionable visible status', () => {
   ];
   for (const [status, expected] of cases) {
     const doc = page();
-    render(doc, { status, items: [] });
+    render(doc, { status, items: [], message: `Refresh stopped: ${status}` });
     assert.equal(doc.querySelector('#status').hidden, false, status);
     assert.match(doc.querySelector('#status').textContent, expected, status);
   }
@@ -106,6 +106,46 @@ test('startup does not rescan when the active signed-in account is unchanged', a
   assert.deepEqual(calls.map((call) => call.type), ['state', 'detect']);
 });
 
+test('an interrupted idle account restarts its first scan', async () => {
+  const calls = [];
+  const idle = { status: 'idle', count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' }, items: [] };
+  await start(startupPage(), { async send(message) {
+    calls.push(message);
+    if (message.type === 'detect') return { changed: false, state: idle };
+    if (message.type === 'refresh') return { ...idle, status: 'ready' };
+    return idle;
+  } });
+  assert.deepEqual(calls.map((call) => call.type), ['state', 'detect', 'refresh']);
+});
+
+test('a malformed detection reply becomes an error instead of leaving a spinner', async () => {
+  const doc = startupPage();
+  await start(doc, { async send(message) {
+    if (message.type === 'state') return { status: 'setup', count: 10, items: [] };
+    return { status: 'error', items: [] };
+  } });
+  assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
+  assert.match(doc.querySelector('#status').textContent, /unexpected failed/i);
+});
+
+test('a busy background scan is polled until its finished state appears', async () => {
+  const doc = startupPage();
+  const callbacks = [];
+  let stateCalls = 0;
+  const scanning = { status: 'scanning', page: 6, count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' }, items: [] };
+  await start(doc, {
+    schedule(fn) { callbacks.push(fn); },
+    async send(message) {
+      if (message.type === 'detect') return { changed: false, state: scanning };
+      stateCalls += 1;
+      return stateCalls === 1 ? scanning : { ...scanning, status: 'ready' };
+    }
+  });
+  assert.equal(callbacks.length, 1);
+  await callbacks.shift()();
+  assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
+});
+
 test('a refresh transport failure replaces the spinner with a visible error', async () => {
   const doc = startupPage();
   const state = { status: 'ready', count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' }, items: [] };
@@ -117,5 +157,5 @@ test('a refresh transport failure replaces the spinner with a visible error', as
   doc.querySelector('#refresh').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
-  assert.match(doc.querySelector('#status').textContent, /message port closed/i);
+  assert.match(doc.querySelector('#status').textContent, /unexpected failed/i);
 });
