@@ -1,0 +1,84 @@
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.DalsiDilParse = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
+  'use strict';
+
+  const HOSTS = new Set(['www.csfd.cz', 'www.csfd.sk']);
+
+  function safeUrl(href, base) {
+    try {
+      const url = new URL(href, base || 'https://www.csfd.cz/');
+      return url.protocol === 'https:' && HOSTS.has(url.hostname) ? url : null;
+    } catch (_) { return null; }
+  }
+
+  function episodeIds(href, base) {
+    const url = safeUrl(href, base);
+    if (!url) return null;
+    const match = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?film\/(\d+)-[^/]+\/(\d+)-[^/]+\//.exec(url.pathname);
+    if (!match) return null;
+    return { seriesId: Number(match[1]), episodeId: Number(match[2]), href: url.pathname };
+  }
+
+  function blocked(doc) {
+    return !!doc.querySelector('#anubis_challenge') || /making sure you are not a bot/i.test(doc.body && doc.body.textContent || '');
+  }
+
+  function parseRatingsPage(doc, firstActivity) {
+    if (blocked(doc)) return { episodes: [], hasNext: false, blocked: true };
+    const episodes = [];
+    let activity = Number(firstActivity) || 0;
+    for (const row of doc.querySelectorAll('table tr')) {
+      const link = row.querySelector('td.name a.film-title-name, a.film-title-name');
+      if (!link) continue;
+      const ids = episodeIds(link.getAttribute('href'), doc.baseURI);
+      const codeMatch = /\bS(\d{1,3})E(\d{1,4})\b/i.exec(row.textContent || '');
+      if (!ids || !codeMatch) continue;
+      const starNode = row.querySelector('.stars');
+      const starMatch = /(?:^|\s)stars-(\d)(?:\s|$)/.exec(starNode && starNode.className || '');
+      if (!starMatch) continue;
+      const time = row.querySelector('time');
+      const date = time && (time.getAttribute('datetime') || time.textContent.trim()) || '';
+      const code = `S${codeMatch[1].padStart(2, '0')}E${codeMatch[2].padStart(2, '0')}`;
+      episodes.push(Object.assign(ids, {
+        code,
+        title: link.textContent.trim(),
+        stars: Number(starMatch[1]),
+        date,
+        activity: activity--,
+        signature: `${ids.episodeId}:${starMatch[1]}:${date}`
+      }));
+    }
+    const next = doc.querySelector('.page-next');
+    return { episodes, hasNext: !!next && !next.classList.contains('disabled'), blocked: false };
+  }
+
+  function parseEpisodePage(doc, expectedSeriesId) {
+    if (blocked(doc)) return { next: null, blocked: true };
+    const header = doc.querySelector('header, .film-header, body');
+    const links = [...header.querySelectorAll('a[href]')];
+    let seriesTitle = '';
+    for (const link of links) {
+      const url = safeUrl(link.getAttribute('href'), doc.baseURI);
+      const match = url && /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?film\/(\d+)-[^/]+\/(?:prehled\/)?$/.exec(url.pathname);
+      if (match && Number(match[1]) === expectedSeriesId) { seriesTitle = link.textContent.trim(); break; }
+    }
+    let next = null;
+    for (const link of links) {
+      const label = `${link.getAttribute('rel') || ''} ${link.textContent || ''} ${link.getAttribute('title') || ''}`;
+      if (!/(^|\s)next(\s|$)|další|nasleduj|weiter|suivant|siguiente|następn/i.test(label)) continue;
+      const ids = episodeIds(link.getAttribute('href'), doc.baseURI);
+      if (ids && ids.seriesId === expectedSeriesId) {
+        const text = link.textContent.trim();
+        const code = /\bS\d{1,3}E\d{1,4}\b/i.exec(text);
+        next = Object.assign(ids, { title: text && !/^(next|další|nasledujúci)$/i.test(text) ? text : '', code: code ? code[0].toUpperCase() : null });
+        break;
+      }
+    }
+    return { seriesTitle, next, blocked: false };
+  }
+
+  return { safeUrl, episodeIds, parseRatingsPage, parseEpisodePage };
+});
