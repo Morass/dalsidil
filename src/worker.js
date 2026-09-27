@@ -23,8 +23,12 @@ async function ensureOffscreen() {
 }
 
 async function parsedPage(kind, url, extra) {
-  await ensureOffscreen();
-  return chrome.runtime.sendMessage(Object.assign({ target: 'offscreen', kind, url }, extra || {}));
+  try {
+    await ensureOffscreen();
+    return await chrome.runtime.sendMessage(Object.assign({ target: 'offscreen', kind, url }, extra || {}));
+  } catch (_) {
+    return { error: 'parser-unavailable' };
+  }
 }
 
 const scanner = DalsiDilScan.createScanner({
@@ -59,12 +63,14 @@ async function detectSignedInProfile() {
   const preferred = initial.profile ? new URL(initial.profile.href).origin : 'https://www.csfd.cz';
   const origins = [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk'].filter((value, index, all) => all.indexOf(value) === index);
   let uncertain = false;
+  let signedOut = 0;
   for (const origin of origins) {
     try {
       const loaded = await parsedPage('profile', `${origin}/`);
       if (loaded.error) { uncertain = true; continue; }
       const found = loaded.parsed;
       if (found.state === 'unknown') uncertain = true;
+      if (found.state === 'out') signedOut += 1;
       if (found.profile) {
         const current = await store.get('settings') || {};
         const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
@@ -72,6 +78,11 @@ async function detectSignedInProfile() {
         return { state: await publicState(), changed };
       }
     } catch (_) { uncertain = true; }
+  }
+  if (!uncertain && signedOut === origins.length) {
+    const current = await store.get('settings') || {};
+    await store.set('settings', { count: current.count || DEFAULT_COUNT });
+    return { state: await publicState(), changed: !!current.profile };
   }
   const state = await publicState();
   if (state.profile) return { state: Object.assign({}, state, { message: 'Could not confirm the current ČSFD login. Showing the previously selected account.' }), changed: false };
@@ -88,7 +99,11 @@ async function refreshNow(full) {
   let account = await store.get(key) || {};
   const owner = crypto.randomUUID();
   const lease = DalsiDilState.acquireLease(account.lease, owner, Date.now(), LEASE_MS);
-  if (!lease) return publicState();
+  if (!lease) {
+    const wait = Math.max(1, Math.ceil((Number(account.lease && account.lease.until) - Date.now()) / 60000));
+    await chrome.alarms.create('continue-scan', { delayInMinutes: wait });
+    return publicState();
+  }
   account.lease = lease;
   account.status = 'scanning';
   await store.set(key, account);
@@ -165,5 +180,11 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'continue-scan') refresh(false);
+  if (alarm.name !== 'continue-scan') return;
+  (async () => {
+    const settings = await store.get('settings') || {};
+    if (!settings.profile) return;
+    const account = await store.get(DalsiDilState.accountKey(settings.profile.id)) || {};
+    if (account.scan && !account.scan.complete) await refresh(false);
+  })();
 });

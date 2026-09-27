@@ -11,6 +11,9 @@ const profile = require('../src/profile.js');
 function workerHarness(routes) {
   const data = {};
   let listener;
+  let alarmListener;
+  let offscreenExists = false;
+  let offscreenCreates = 0;
   const alarms = [];
   const cleared = [];
   const root = path.resolve(__dirname, '..');
@@ -29,24 +32,29 @@ function workerHarness(routes) {
       runtime: {
         onMessage: { addListener(fn) { listener = fn; } },
         getURL(pathname) { return `chrome-extension://test/${pathname}`; },
-        async getContexts() { return [{}]; },
+        async getContexts() { return offscreenExists ? [{}] : []; },
         async sendMessage(message) {
-          const key = new URL(message.url).pathname + new URL(message.url).search;
-          const route = routes[key];
+          const target = new URL(message.url);
+          const key = target.pathname + target.search;
+          const route = routes[target.href] === undefined ? routes[key] : routes[target.href];
+          if (route instanceof Error) throw route;
           const body = typeof route === 'function' ? await route() : route;
           if (body == null) return { error: 'http-404' };
-          const doc = new JSDOM(body, { url: message.url }).window.document;
+          const doc = new JSDOM(body, { url: 'chrome-extension://test/offscreen/offscreen.html' }).window.document;
+          const base = doc.createElement('base');
+          base.href = message.url;
+          doc.head.prepend(base);
           if (message.kind === 'profile') return { parsed: profile.detectProfile(doc, message.url) };
           if (message.kind === 'ratings') return { parsed: parse.parseRatingsPage(doc, message.activity) };
           if (message.kind === 'episode') return { parsed: parse.parseEpisodePage(doc, message.seriesId) };
           return { error: 'unknown-parser-request' };
         }
       },
-      offscreen: { async createDocument() {} },
+      offscreen: { async createDocument() { offscreenExists = true; offscreenCreates += 1; } },
       alarms: {
         async create(name, options) { alarms.push({ name, options }); },
         async clear(name) { cleared.push(name); return true; },
-        onAlarm: { addListener() {} }
+        onAlarm: { addListener(fn) { alarmListener = fn; } }
       }
     }
   });
@@ -56,7 +64,7 @@ function workerHarness(routes) {
   };
   vm.runInContext(fs.readFileSync(path.join(root, 'src/worker.js'), 'utf8'), context, { filename: 'worker.js' });
   const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
-  return { send, data, alarms, cleared };
+  return { send, data, alarms, cleared, fireAlarm(name) { alarmListener({ name }); }, get offscreenCreates() { return offscreenCreates; } };
 }
 
 test('real worker flow turns a profile rating into a linked next episode', async () => {
@@ -78,6 +86,7 @@ test('opening the extension discovers the current signed-in account and scans it
   const app = workerHarness({ '/': home, '/uzivatel/7-me/hodnoceni/': ratings, '/film/9-show/11-one/prehled/': episode });
   const detected = await app.send({ type: 'detect' });
   assert.equal(detected.changed, true);
+  assert.equal(app.offscreenCreates, 1);
   const state = await app.send({ type: 'refresh', full: false });
   assert.equal(state.status, 'ready');
   assert.equal(state.profile.id, 7);
@@ -102,6 +111,16 @@ test('failed login detection names that cached account identity was not confirme
   assert.match(detected.state.message, /could not confirm.*login/i);
 });
 
+test('definite logout clears the previously selected account', async () => {
+  const signedOut = '<header class="page-header user-not-logged"></header>';
+  const app = workerHarness({ 'https://www.csfd.cz/': signedOut, 'https://www.csfd.sk/': signedOut });
+  app.data.settings = { count: 12, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
+  const detected = await app.send({ type: 'detect' });
+  assert.equal(detected.state.status, 'setup');
+  assert.equal(app.data.settings.profile, undefined);
+  assert.equal(app.data.settings.count, 12);
+});
+
 test('login detection preserves a setting changed while its request is in flight', async () => {
   let release;
   const waiting = new Promise((resolve) => { release = resolve; });
@@ -114,6 +133,22 @@ test('login detection preserves a setting changed while its request is in flight
   release();
   await detection;
   assert.equal(app.data.settings.count, 23);
+});
+
+test('an offscreen parser failure releases the scan lease with an explicit status', async () => {
+  const app = workerHarness({ '/uzivatel/7-me/hodnoceni/': new Error('parser disappeared') });
+  const state = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  assert.equal(state.status, 'parser-unavailable');
+  assert.equal(app.data['account:7'].lease, null);
+});
+
+test('an early continuation alarm is rescheduled until the persisted lease expires', async () => {
+  const app = workerHarness({});
+  app.data.settings = { count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = { scan: { complete: false, nextPage: 2, ratings: {} }, lease: { owner: 'old-worker', until: Date.now() + 120000 } };
+  app.fireAlarm('continue-scan');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(app.alarms.some((alarm) => alarm.name === 'continue-scan' && alarm.options.delayInMinutes >= 1));
 });
 
 test('a profile URL copied without its trailing slash is accepted', async () => {

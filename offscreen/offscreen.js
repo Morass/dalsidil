@@ -8,6 +8,9 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     catch (_) { return { error: 'network' }; }
     if (!response.ok) return { error: `http-${response.status}` };
     const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const base = doc.createElement('base');
+    base.href = message.url;
+    (doc.head || doc.documentElement).prepend(base);
     if (message.kind === 'profile') return { parsed: DalsiDilProfile.detectProfile(doc, message.url) };
     if (message.kind === 'ratings') return { parsed: DalsiDilParse.parseRatingsPage(doc, message.activity) };
     if (message.kind === 'episode') return { parsed: DalsiDilParse.parseEpisodePage(doc, message.seriesId) };
