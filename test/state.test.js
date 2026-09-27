@@ -19,10 +19,22 @@ test('checkpointing a partial scan never marks it complete', () => {
   assert.equal(state.scan.nextPage, 6);
 });
 
+test('successive checkpoints accumulate pages instead of discarding the earlier page', () => {
+  const first = scanCheckpoint(null, { page: 1, ratings: { 1: { seriesId: 1 } } }, 100);
+  const second = scanCheckpoint(first, { page: 2, ratings: { 2: { seriesId: 2 } } }, 200);
+  assert.deepEqual(Object.keys(second.scan.ratings), ['1', '2']);
+});
+
 test('only a completed full scan replaces prior ratings', () => {
   const old = { ratings: { 1: { seriesId: 1 }, 2: { seriesId: 2 } } };
   const incremental = publishScan(old, { ratings: { 1: { seriesId: 1 } }, full: false }, 100);
   assert.deepEqual(Object.keys(incremental.ratings), ['1', '2']);
   const full = publishScan(old, { ratings: { 1: { seriesId: 1 } }, full: true }, 100);
   assert.deepEqual(Object.keys(full.ratings), ['1']);
+});
+
+test('incremental publication preserves nested signatures for a known series', () => {
+  const old = { ratings: { 1: { seriesId: 1, activity: 1, signatures: { 10: 'old' } } } };
+  const next = publishScan(old, { ratings: { 1: { seriesId: 1, activity: 2, signatures: { 11: 'new' } } }, full: false }, 100);
+  assert.deepEqual(next.ratings[1].signatures, { 10: 'old', 11: 'new' });
 });

@@ -22,7 +22,7 @@
     next.scan = {
       complete: false,
       nextPage: Number(part.page) + 1,
-      ratings: Object.assign({}, part.ratings || {}),
+      ratings: Object.assign({}, next.scan && next.scan.ratings || {}, part.ratings || {}),
       updatedAt: now
     };
     return next;
@@ -30,9 +30,17 @@
 
   function publishScan(state, result, now) {
     const next = Object.assign({}, state || {});
-    next.ratings = result.full
-      ? Object.assign({}, result.ratings || {})
-      : Object.assign({}, next.ratings || {}, result.ratings || {});
+    if (result.full) {
+      next.ratings = Object.assign({}, result.ratings || {});
+    } else {
+      next.ratings = Object.assign({}, next.ratings || {});
+      for (const [key, value] of Object.entries(result.ratings || {})) {
+        const prior = next.ratings[key] || {};
+        next.ratings[key] = Object.assign({}, prior, value, {
+          signatures: Object.assign({}, prior.signatures || {}, value.signatures || {})
+        });
+      }
+    }
     next.scan = { complete: true, nextPage: 1, updatedAt: now, full: !!result.full };
     return next;
   }

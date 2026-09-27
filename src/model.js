@@ -13,7 +13,7 @@
   function compareProgress(a, b) {
     const left = numericCode(a && a.code);
     const right = numericCode(b && b.code);
-    if (!left && !right) return 0;
+    if (!left && !right) return Number(a && a.activity || 0) - Number(b && b.activity || 0);
     if (!left) return -1;
     if (!right) return 1;
     return left.season - right.season || left.episode - right.episode;

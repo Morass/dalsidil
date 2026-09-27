@@ -26,6 +26,11 @@ test('specials do not outrank numbered progress by invented arithmetic', () => {
   assert.equal(compareProgress({ code: 'S02E04' }, { code: 'S02E03' }), 1);
 });
 
+test('between two irregular episodes the newer activity remains the progress URL', () => {
+  const rows = [episode(10, 7, 'Special', 1), episode(10, 8, 'Bonus', 9)];
+  assert.equal(rankedSeries(mergeRatings({}, rows))[0].progress.episodeId, 8);
+});
+
 test('a complete replacement removes deleted ratings but an incremental merge does not', () => {
   const old = mergeRatings({}, [episode(1, 1, 'S01E01', 1), episode(2, 2, 'S01E01', 2)]);
   const partial = mergeRatings(old, [episode(1, 1, 'S01E01', 3)]);
