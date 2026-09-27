@@ -65,6 +65,7 @@ async function refreshNow(full) {
   });
 
   if (scanned.stopped && scanned.stopped !== 'chunk') {
+    await chrome.alarms.clear('continue-scan');
     account.status = scanned.stopped;
     account.message = scanned.stopped === 'challenge' ? '' : `Refresh stopped: ${scanned.stopped}`;
     account.lease = null;
@@ -73,6 +74,7 @@ async function refreshNow(full) {
   }
 
   if (scanned.complete) {
+    await chrome.alarms.clear('continue-scan');
     account = DalsiDilState.publishScan(account, { ratings: scanned.ratings, full: !!scanned.full }, Date.now());
   } else {
     account.scan = { complete: false, nextPage: scanned.nextPage, knownStreak: scanned.knownStreak, incremental, ratings: scanned.ratings, updatedAt: Date.now() };
