@@ -1,5 +1,5 @@
 'use strict';
-importScripts('model.js', 'parse.js', 'state.js', 'scan.js');
+importScripts('model.js', 'parse.js', 'state.js', 'scan.js', 'profile.js');
 
 const LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_COUNT = 10;
@@ -10,17 +10,6 @@ const store = {
   async get(key) { return (await chrome.storage.local.get(key))[key]; },
   async set(key, value) { await chrome.storage.local.set({ [key]: value }); }
 };
-
-function parseProfile(href) {
-  let url;
-  try { url = new URL(href); } catch (_) { return null; }
-  if (url.protocol !== 'https:' || !['www.csfd.cz', 'www.csfd.sk'].includes(url.hostname)) return null;
-  const match = /^\/(?:en\/)?(?:uzivatel|user)\/(\d+)-([^/]+)(?:\/|$)/.exec(url.pathname);
-  if (!match) return null;
-  const prefix = url.pathname.startsWith('/en/') ? '/en/user/' : (url.hostname.endsWith('.sk') ? '/uzivatel/' : '/uzivatel/');
-  const slug = `${match[1]}-${match[2]}`;
-  return { id: Number(match[1]), href: `${url.origin}${prefix}${slug}/` };
-}
 
 async function publicState() {
   const settings = await store.get('settings') || { count: DEFAULT_COUNT };
@@ -35,6 +24,31 @@ async function publicState() {
     page: account.scan && account.scan.nextPage,
     message: account.message || ''
   };
+}
+
+async function detectSignedInProfile() {
+  const settings = await store.get('settings') || {};
+  const preferred = settings.profile ? new URL(settings.profile.href).origin : 'https://www.csfd.cz';
+  const origins = [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk'].filter((value, index, all) => all.indexOf(value) === index);
+  let uncertain = false;
+  for (const origin of origins) {
+    try {
+      const response = await fetch(`${origin}/`, { credentials: 'include' });
+      if (!response.ok) { uncertain = true; continue; }
+      const found = DalsiDilProfile.detectProfile(new DOMParser().parseFromString(await response.text(), 'text/html'), `${origin}/`);
+      if (found.state === 'unknown') uncertain = true;
+      if (found.profile) {
+        await store.set('settings', Object.assign({}, settings, { profile: found.profile, count: settings.count || DEFAULT_COUNT }));
+        return refresh(false);
+      }
+    } catch (_) { uncertain = true; }
+  }
+  const state = await publicState();
+  if (state.profile) return state;
+  state.message = uncertain
+    ? 'Could not identify the signed-in ČSFD account. Open ČSFD, then try again or add the profile URL in Settings.'
+    : 'Sign in to ČSFD, then reopen this extension. You can also add the profile URL in Settings.';
+  return state;
 }
 
 async function refreshNow(full) {
@@ -99,8 +113,9 @@ function refresh(full) {
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
   (async () => {
     if (message.type === 'state') return publicState();
+    if (message.type === 'detect') return detectSignedInProfile();
     if (message.type === 'profile') {
-      const profile = parseProfile(message.href);
+      const profile = DalsiDilProfile.parseProfile(message.href);
       if (!profile) return Object.assign(await publicState(), { status: 'error', message: 'That is not a ČSFD profile URL.' });
       const settings = await store.get('settings') || {};
       await store.set('settings', Object.assign({}, settings, { profile, count: settings.count || DEFAULT_COUNT }));

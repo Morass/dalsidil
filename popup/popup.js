@@ -44,8 +44,11 @@
     const profile = doc.querySelector('#profile');
     const refresh = doc.querySelector('#refresh');
     const fullRefresh = doc.querySelector('#full-refresh');
-    const saved = await api.send({ type: 'state' });
+    let saved = await api.send({ type: 'state' });
     count.value = saved.count || 10;
+    profile.value = saved.profile && saved.profile.href || '';
+    render(doc, Object.assign({}, saved, { status: 'detecting', message: 'Checking your ČSFD login…' }));
+    saved = await api.send({ type: 'detect' });
     profile.value = saved.profile && saved.profile.href || '';
     render(doc, saved);
     count.addEventListener('change', async () => render(doc, await api.send({ type: 'count', count: Number(count.value) })));

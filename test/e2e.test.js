@@ -54,6 +54,26 @@ test('real worker flow turns a profile rating into a linked next episode', async
   assert.equal(app.data.settings.profile.id, 7);
 });
 
+test('opening the extension discovers the current signed-in account and scans it', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
+  const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>`;
+  const episode = `<header><h2><a href="/film/9-show/prehled/">Show</a></h2><nav><a rel="next" href="/film/9-show/12-two/prehled/">next</a></nav></header>`;
+  const app = workerHarness({ '/': home, '/uzivatel/7-me/hodnoceni/': ratings, '/film/9-show/11-one/prehled/': episode });
+  const state = await app.send({ type: 'detect' });
+  assert.equal(state.status, 'ready');
+  assert.equal(state.profile.id, 7);
+  assert.equal(state.items.length, 1);
+});
+
+test('automatic detection replaces a stale saved account with the active login', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/8-current/">Me</a></li></ul></header>';
+  const app = workerHarness({ '/': home, '/uzivatel/8-current/hodnoceni/': '<table></table>' });
+  app.data.settings = { count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
+  const state = await app.send({ type: 'detect' });
+  assert.equal(state.profile.id, 8);
+  assert.equal(app.data.settings.profile.id, 8);
+});
+
 test('a profile URL copied without its trailing slash is accepted', async () => {
   const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a></td><td><span class="stars stars-4"></span></td></tr></table>`;
   const episode = `<div class="film-header"><h2><a href="/film/9-show/prehled/">Show</a></h2><h1>One (S01E01)</h1></div>`;

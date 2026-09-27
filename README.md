@@ -12,7 +12,9 @@ Další díl shows what comes next in series you rate on ČSFD. It reads episode
 
 ## Quick start
 
-Open the extension and paste the address of your ČSFD profile, such as `https://www.csfd.cz/uzivatel/123-name/`. The first scan may continue in small batches if your ratings history is long. You can close the popup; progress is saved.
+Sign in to ČSFD normally, then open the extension. Další díl identifies the account from ČSFD's signed-in header and starts scanning it automatically. It never receives your password. If automatic detection is unavailable, open **Settings** and paste the address of your ČSFD profile, such as `https://www.csfd.cz/uzivatel/123-name/`.
+
+The first scan may continue in small batches if your ratings history is long. You can close the popup; progress is saved.
 
 The list is ordered by the most recent episode-rating activity. Each row shows the furthest normally numbered episode you rated and links to ČSFD's following episode. Finished series are left out. The default list has 10 series; open **Settings** to choose 1–25.
 
@@ -20,7 +22,7 @@ Use **↻** to check for new ratings. Settings also has **Full rescan**, which r
 
 ## What it touches
 
-Další díl contacts only `www.csfd.cz` and `www.csfd.sk`. It reads public profile-rating and episode pages using your normal browser session. Derived progress, settings, and cached links stay in Chrome's local extension storage. It has no analytics, server, API key, or separate account.
+Další díl contacts only `www.csfd.cz` and `www.csfd.sk`. It reads the signed-in header plus profile-rating and episode pages using your normal browser session. It does not read or store your ČSFD password or cookies. Derived progress, settings, and cached links stay in Chrome's local extension storage. It has no analytics, server, API key, or separate account.
 
 It never changes ratings or other ČSFD data.
 
