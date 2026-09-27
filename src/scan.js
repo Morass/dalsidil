@@ -72,7 +72,8 @@
         const signature = series.progress && series.progress.signature || String(series.progress && series.progress.episodeId || '');
         let entry = resolved[series.seriesId];
         const staleFinished = entry && !entry.next && now() - Number(entry.checkedAt || 0) >= finishedMaxAge;
-        if (!entry || entry.signature !== signature || staleFinished) {
+        const unresolvedTitle = entry && (!entry.seriesTitle || /^Series \d+$/.test(entry.seriesTitle));
+        if (!entry || entry.signature !== signature || staleFinished || unresolvedTitle) {
           const url = new URL(series.progress.href, series.progress.host || opt.origin || 'https://www.csfd.cz/').href;
           const loaded = loadEpisode ? await loadEpisode(url, series.seriesId) : await getDocument(url);
           asked += 1;

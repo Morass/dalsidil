@@ -60,6 +60,16 @@ test('live ČSFD shape keeps episode navigation in a separate series-control', (
   assert.match(out.next.href, /12-next/);
 });
 
+test('the site account header is not mistaken for the film header', () => {
+  const page = doc(`<header class="page-header user-logged"><a class="profile" href="/uzivatel/7-me/">Me</a></header>
+    <main><header class="film-header"><div class="film-header-name"><h1><a href="/film/340866-show/prehled/">Actual Show</a> - Pilot (S01E01)</h1>
+    <div class="series-control"><a class="next-episode" title="další" href="/film/340866-show/22-second/prehled/">další</a></div></div></header></main>`);
+  const parsed = parseEpisodePage(page, 340866);
+  assert.equal(parsed.seriesTitle, 'Actual Show');
+  assert.equal(parsed.currentCode, 'S01E01');
+  assert.equal(parsed.next.episodeId, 22);
+});
+
 test('episode parser reports finished when no same-series next link exists', () => {
   const page = doc(`<header><h2><a href="/film/9-show/prehled/">Show</a></h2><a rel="next" href="/film/8-other/3-no/prehled/">next</a></header>`);
   assert.equal(parseEpisodePage(page, 9).next, null);

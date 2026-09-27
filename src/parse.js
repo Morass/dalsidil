@@ -70,7 +70,7 @@
     if (blocked(doc)) return { next: null, blocked: true };
     const expected = Number(expectedSeriesId);
     if (!Number.isInteger(expected) || expected <= 0) return { next: null, blocked: false };
-    const header = doc.querySelector('.film-header, header');
+    const header = doc.querySelector('.film-header') || doc.querySelector('header');
     if (!header) return { next: null, blocked: false };
     const navigation = doc.querySelector('.series-control') || header;
     const headerLinks = [...header.querySelectorAll('a[href]')];

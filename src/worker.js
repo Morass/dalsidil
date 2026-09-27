@@ -81,7 +81,9 @@ async function detectSignedInProfile() {
         const current = await store.get('settings') || {};
         const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
         await store.set('settings', Object.assign({}, current, { profile: found.profile, count: current.count || DEFAULT_COUNT }));
-        return { state: await publicState(), changed };
+        const state = await publicState();
+        const needsNames = state.items.some((item) => !item.seriesTitle || /^Series \d+$/.test(item.seriesTitle));
+        return { state, changed: changed || needsNames };
       }
     } catch (_) { uncertain = true; }
   }
