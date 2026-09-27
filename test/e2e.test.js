@@ -123,6 +123,15 @@ test('an unexpected worker error preserves cached rows in its visible error stat
   assert.equal(state.items[0].seriesTitle, 'Cached Show');
 });
 
+test('an unexpected error keeps recovery armed for a checkpointed partial scan', async () => {
+  const app = workerHarness({});
+  app.data.settings = { count: 10, profile: { id: 7, href: 'not a URL' } };
+  app.data['account:7'] = { scan: { complete: false, nextPage: 2, ratings: {} } };
+  const state = await app.send({ type: 'refresh', full: false });
+  assert.equal(state.status, 'error');
+  assert.ok(app.alarms.some((alarm) => alarm.name === 'continue-scan'), 'partial scan remains recoverable');
+});
+
 test('definite logout clears the previously selected account', async () => {
   const signedOut = '<header class="page-header user-not-logged"></header>';
   const app = workerHarness({ 'https://www.csfd.cz/': signedOut, 'https://www.csfd.sk/': signedOut });

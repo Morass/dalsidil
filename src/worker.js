@@ -135,7 +135,11 @@ async function refreshNow(full) {
   });
 
   if (scanned.stopped && scanned.stopped !== 'chunk') {
-    await chrome.alarms.clear('continue-scan');
+    if (account.scan && !account.scan.complete) {
+      await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
+    } else {
+      await chrome.alarms.clear('continue-scan');
+    }
     account.status = scanned.stopped;
     account.message = scanned.stopped === 'challenge' ? '' : `Refresh stopped: ${scanned.stopped}`;
     account.lease = null;
