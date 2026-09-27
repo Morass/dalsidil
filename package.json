@@ -8,9 +8,9 @@
     "test:negative": "bash scripts/negative-control.sh"
   },
   "devDependencies": {
-    "jsdom": "^27.0.0"
+    "jsdom": "^22.1.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   }
 }
