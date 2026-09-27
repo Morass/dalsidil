@@ -3,8 +3,36 @@ importScripts('model.js', 'parse.js', 'state.js', 'scan.js', 'profile.js');
 
 const LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_COUNT = 10;
-const scanner = DalsiDilScan.createScanner({ pagesPerRun: 5, pace: 700 });
 let refreshChain = Promise.resolve();
+let creatingOffscreen = null;
+
+async function ensureOffscreen() {
+  const offscreenURL = chrome.runtime.getURL('offscreen/offscreen.html');
+  const exists = chrome.runtime.getContexts
+    ? (await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [offscreenURL] })).length > 0
+    : (await clients.matchAll()).some((client) => client.url === offscreenURL);
+  if (exists) return;
+  if (!creatingOffscreen) {
+    creatingOffscreen = chrome.offscreen.createDocument({
+      url: 'offscreen/offscreen.html',
+      reasons: ['DOM_PARSER'],
+      justification: 'Parse ČSFD pages locally without exposing account data.'
+    }).finally(() => { creatingOffscreen = null; });
+  }
+  await creatingOffscreen;
+}
+
+async function parsedPage(kind, url, extra) {
+  await ensureOffscreen();
+  return chrome.runtime.sendMessage(Object.assign({ target: 'offscreen', kind, url }, extra || {}));
+}
+
+const scanner = DalsiDilScan.createScanner({
+  pagesPerRun: 5,
+  pace: 700,
+  loadRatings: (url, activity) => parsedPage('ratings', url, { activity }),
+  loadEpisode: (url, seriesId) => parsedPage('episode', url, { seriesId })
+});
 
 const store = {
   async get(key) { return (await chrome.storage.local.get(key))[key]; },
@@ -27,28 +55,30 @@ async function publicState() {
 }
 
 async function detectSignedInProfile() {
-  const settings = await store.get('settings') || {};
-  const preferred = settings.profile ? new URL(settings.profile.href).origin : 'https://www.csfd.cz';
+  const initial = await store.get('settings') || {};
+  const preferred = initial.profile ? new URL(initial.profile.href).origin : 'https://www.csfd.cz';
   const origins = [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk'].filter((value, index, all) => all.indexOf(value) === index);
   let uncertain = false;
   for (const origin of origins) {
     try {
-      const response = await fetch(`${origin}/`, { credentials: 'include' });
-      if (!response.ok) { uncertain = true; continue; }
-      const found = DalsiDilProfile.detectProfile(new DOMParser().parseFromString(await response.text(), 'text/html'), `${origin}/`);
+      const loaded = await parsedPage('profile', `${origin}/`);
+      if (loaded.error) { uncertain = true; continue; }
+      const found = loaded.parsed;
       if (found.state === 'unknown') uncertain = true;
       if (found.profile) {
-        await store.set('settings', Object.assign({}, settings, { profile: found.profile, count: settings.count || DEFAULT_COUNT }));
-        return refresh(false);
+        const current = await store.get('settings') || {};
+        const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
+        await store.set('settings', Object.assign({}, current, { profile: found.profile, count: current.count || DEFAULT_COUNT }));
+        return { state: await publicState(), changed };
       }
     } catch (_) { uncertain = true; }
   }
   const state = await publicState();
-  if (state.profile) return state;
+  if (state.profile) return { state: Object.assign({}, state, { message: 'Could not confirm the current ČSFD login. Showing the previously selected account.' }), changed: false };
   state.message = uncertain
     ? 'Could not identify the signed-in ČSFD account. Open ČSFD, then try again or add the profile URL in Settings.'
     : 'Sign in to ČSFD, then reopen this extension. You can also add the profile URL in Settings.';
-  return state;
+  return { state, changed: false };
 }
 
 async function refreshNow(full) {
@@ -111,6 +141,7 @@ function refresh(full) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+  if (message && message.target === 'offscreen') return false;
   (async () => {
     if (message.type === 'state') return publicState();
     if (message.type === 'detect') return detectSignedInProfile();

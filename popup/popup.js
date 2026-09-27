@@ -48,9 +48,11 @@
     count.value = saved.count || 10;
     profile.value = saved.profile && saved.profile.href || '';
     render(doc, Object.assign({}, saved, { status: 'detecting', message: 'Checking your ČSFD login…' }));
-    saved = await api.send({ type: 'detect' });
+    const detected = await api.send({ type: 'detect' });
+    saved = detected.state;
     profile.value = saved.profile && saved.profile.href || '';
     render(doc, saved);
+    if (detected.changed) render(doc, await api.send({ type: 'refresh', full: false }));
     count.addEventListener('change', async () => render(doc, await api.send({ type: 'count', count: Number(count.value) })));
     profile.addEventListener('change', async () => render(doc, await api.send({ type: 'profile', href: profile.value })));
     refresh.addEventListener('click', async () => {

@@ -16,6 +16,8 @@
     const pagesPerRun = opt.pagesPerRun || 5;
     const now = opt.now || Date.now;
     const finishedMaxAge = opt.finishedMaxAge || 24 * 60 * 60 * 1000;
+    const loadRatings = opt.loadRatings || null;
+    const loadEpisode = opt.loadEpisode || null;
 
     function ratingsUrl(profile, page) {
       const base = new URL(profile.href);
@@ -41,9 +43,11 @@
       const activityBase = Number(resume && resume.activityBase) || now() * 1000;
       for (let offset = 0; offset < pagesPerRun; offset += 1) {
         const page = start + offset;
-        const loaded = await getDocument(ratingsUrl(profile, page));
+        const loaded = loadRatings
+          ? await loadRatings(ratingsUrl(profile, page), activityBase - (page - 1) * 1000)
+          : await getDocument(ratingsUrl(profile, page));
         if (loaded.error) return { ratings, complete: false, nextPage: page, stopped: loaded.error };
-        const parsed = parse.parseRatingsPage(loaded.doc, activityBase - (page - 1) * 1000);
+        const parsed = loaded.parsed || parse.parseRatingsPage(loaded.doc, activityBase - (page - 1) * 1000);
         if (parsed.blocked) return { ratings, complete: false, nextPage: page, stopped: 'challenge' };
         const alreadyKnown = !!(resume && resume.incremental && parsed.episodes.length) && parsed.episodes.every((item) => {
           const series = ratings[String(item.seriesId)];
@@ -70,13 +74,13 @@
         const staleFinished = entry && !entry.next && now() - Number(entry.checkedAt || 0) >= finishedMaxAge;
         if (!entry || entry.signature !== signature || staleFinished) {
           const url = new URL(series.progress.href, opt.origin || 'https://www.csfd.cz/').href;
-          const loaded = await getDocument(url);
+          const loaded = loadEpisode ? await loadEpisode(url, series.seriesId) : await getDocument(url);
           asked += 1;
           if (loaded.error) {
             if (/^http-(?:404|410)$/.test(loaded.error)) continue;
             return { items, cache: resolved, asked, stopped: loaded.error, complete: false };
           }
-          const parsed = parse.parseEpisodePage(loaded.doc, series.seriesId);
+          const parsed = loaded.parsed || parse.parseEpisodePage(loaded.doc, series.seriesId);
           if (parsed.blocked) return { items, cache: resolved, asked, stopped: 'challenge', complete: false };
           entry = { signature, seriesTitle: parsed.seriesTitle, currentCode: parsed.currentCode, next: parsed.next, checkedAt: now() };
           resolved[series.seriesId] = entry;
