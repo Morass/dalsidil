@@ -3,7 +3,6 @@ importScripts('model.js', 'parse.js', 'state.js', 'scan.js');
 
 const LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_COUNT = 10;
-const BOOT_ID = crypto.randomUUID();
 const scanner = DalsiDilScan.createScanner({ pagesPerRun: 5, pace: 700 });
 let refreshChain = Promise.resolve();
 
@@ -16,10 +15,10 @@ function parseProfile(href) {
   let url;
   try { url = new URL(href); } catch (_) { return null; }
   if (url.protocol !== 'https:' || !['www.csfd.cz', 'www.csfd.sk'].includes(url.hostname)) return null;
-  const match = /^\/(?:en\/)?(?:uzivatel|user)\/(\d+)-[^/]+\//.exec(url.pathname);
+  const match = /^\/(?:en\/)?(?:uzivatel|user)\/(\d+)-([^/]+)(?:\/|$)/.exec(url.pathname);
   if (!match) return null;
   const prefix = url.pathname.startsWith('/en/') ? '/en/user/' : (url.hostname.endsWith('.sk') ? '/uzivatel/' : '/uzivatel/');
-  const slug = url.pathname.split('/')[url.pathname.startsWith('/en/') ? 3 : 2];
+  const slug = `${match[1]}-${match[2]}`;
   return { id: Number(match[1]), href: `${url.origin}${prefix}${slug}/` };
 }
 
@@ -43,22 +42,22 @@ async function refreshNow(full) {
   if (!settings.profile) return publicState();
   const key = DalsiDilState.accountKey(settings.profile.id);
   let account = await store.get(key) || {};
-  const owner = `${BOOT_ID}:${crypto.randomUUID()}`;
-  if (account.lease && !String(account.lease.owner || '').startsWith(`${BOOT_ID}:`)) account.lease = null;
+  const owner = crypto.randomUUID();
   const lease = DalsiDilState.acquireLease(account.lease, owner, Date.now(), LEASE_MS);
   if (!lease) return publicState();
   account.lease = lease;
   account.status = 'scanning';
   await store.set(key, account);
 
-  const continuing = account.scan && !account.scan.complete;
+  const continuing = !full && account.scan && !account.scan.complete;
   const incremental = !full && !continuing && !!account.ratings;
   const resume = continuing
-    ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, knownStreak: account.scan.knownStreak, incremental: !!account.scan.incremental }
+    ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, knownStreak: account.scan.knownStreak, activityBase: account.scan.activityBase, incremental: !!account.scan.incremental }
     : { nextPage: 1, ratings: (full ? {} : account.ratings || {}), incremental };
   const scanned = await scanner.scanRatings(settings.profile, resume, async (part) => {
     account = DalsiDilState.scanCheckpoint(account, part, Date.now());
     account.scan.incremental = incremental;
+    account.scan.activityBase = part.activityBase;
     account.lease = { owner, until: Date.now() + LEASE_MS };
     await store.set(key, account);
     await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
@@ -74,10 +73,9 @@ async function refreshNow(full) {
   }
 
   if (scanned.complete) {
-    await chrome.alarms.clear('continue-scan');
     account = DalsiDilState.publishScan(account, { ratings: scanned.ratings, full: !!scanned.full }, Date.now());
   } else {
-    account.scan = { complete: false, nextPage: scanned.nextPage, knownStreak: scanned.knownStreak, incremental, ratings: scanned.ratings, updatedAt: Date.now() };
+    account.scan = { complete: false, nextPage: scanned.nextPage, knownStreak: scanned.knownStreak, activityBase: scanned.activityBase, incremental, ratings: scanned.ratings, updatedAt: Date.now() };
   }
   const candidates = DalsiDilModel.rankedSeries(scanned.ratings);
   const resolved = await scanner.resolve(candidates, settings.count || DEFAULT_COUNT, account.resolved || {});
@@ -87,7 +85,8 @@ async function refreshNow(full) {
   account.message = resolved.stopped && resolved.stopped !== 'challenge' ? `Refresh stopped: ${resolved.stopped}` : '';
   account.lease = null;
   await store.set(key, account);
-  if (!scanned.complete) await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
+  if (scanned.complete) await chrome.alarms.clear('continue-scan');
+  else await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
   return publicState();
 }
 

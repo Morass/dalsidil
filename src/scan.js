@@ -38,24 +38,25 @@
       const start = Math.max(1, Number(resume && resume.nextPage) || 1);
       let ratings = Object.assign({}, resume && resume.ratings || {});
       let knownStreak = Number(resume && resume.knownStreak) || 0;
+      const activityBase = Number(resume && resume.activityBase) || now() * 1000;
       for (let offset = 0; offset < pagesPerRun; offset += 1) {
         const page = start + offset;
         const loaded = await getDocument(ratingsUrl(profile, page));
         if (loaded.error) return { ratings, complete: false, nextPage: page, stopped: loaded.error };
-        const parsed = parse.parseRatingsPage(loaded.doc, 1000000000 - (page - 1) * 1000);
+        const parsed = parse.parseRatingsPage(loaded.doc, activityBase - (page - 1) * 1000);
         if (parsed.blocked) return { ratings, complete: false, nextPage: page, stopped: 'challenge' };
         const alreadyKnown = !!(resume && resume.incremental && parsed.episodes.length) && parsed.episodes.every((item) => {
           const series = ratings[String(item.seriesId)];
           return series && series.signatures && series.signatures[item.episodeId] === item.signature;
         });
         ratings = model.mergeRatings(ratings, parsed.episodes);
-        if (onCheckpoint) await onCheckpoint({ page, ratings, complete: false });
+        if (onCheckpoint) await onCheckpoint({ page, ratings, activityBase, complete: false });
         knownStreak = alreadyKnown ? knownStreak + 1 : 0;
         if (knownStreak >= 2) return { ratings, complete: true, full: false, nextPage: 1, stopped: null };
         if (!parsed.hasNext) return { ratings, complete: true, full: !(resume && resume.incremental), nextPage: 1, stopped: null };
         if (pace) await sleep(pace);
       }
-      return { ratings, complete: false, nextPage: start + pagesPerRun, knownStreak, stopped: 'chunk' };
+      return { ratings, complete: false, nextPage: start + pagesPerRun, knownStreak, activityBase, stopped: 'chunk' };
     }
 
     async function resolve(candidates, limit, cache) {
@@ -71,7 +72,10 @@
           const url = new URL(series.progress.href, opt.origin || 'https://www.csfd.cz/').href;
           const loaded = await getDocument(url);
           asked += 1;
-          if (loaded.error) return { items, cache: resolved, asked, stopped: loaded.error, complete: false };
+          if (loaded.error) {
+            if (/^http-(?:404|410)$/.test(loaded.error)) continue;
+            return { items, cache: resolved, asked, stopped: loaded.error, complete: false };
+          }
           const parsed = parse.parseEpisodePage(loaded.doc, series.seriesId);
           if (parsed.blocked) return { items, cache: resolved, asked, stopped: 'challenge', complete: false };
           entry = { signature, seriesTitle: parsed.seriesTitle, currentCode: parsed.currentCode, next: parsed.next, checkedAt: now() };

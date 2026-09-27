@@ -82,3 +82,25 @@ test('a resolver failure returns its status without claiming a complete replacem
   assert.equal(out.stopped, 'network');
   assert.equal(out.complete, false);
 });
+
+test('a missing episode page is skipped so a later live series can fill the list', async () => {
+  const fetch = async (url) => new URL(url).pathname.includes('/1-show/')
+    ? { ok: false, status: 404, text: async () => '' }
+    : { ok: true, text: async () => episodePage(2, 23, 'Live') };
+  const scanner = createScanner({ fetch, parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, sleep: async () => {} });
+  const candidates = [
+    { seriesId: 1, progress: { href: '/film/1-show/11-old/prehled/', signature: '11' } },
+    { seriesId: 2, progress: { href: '/film/2-show/22-current/prehled/', signature: '22' } }
+  ];
+  const out = await scanner.resolve(candidates, 1, {});
+  assert.equal(out.complete, true);
+  assert.equal(out.items[0].seriesTitle, 'Live');
+});
+
+test('a later scan receives a newer activity generation and can reorder an old series', async () => {
+  const html = ratingPage({ series: 1, id: 2, title: 'E', season: '01', number: '02', date: '2026-01-01' }, false);
+  const scanner = createScanner({ fetch: async () => ({ ok: true, text: async () => html }), parseHTML: (s, u) => new JSDOM(s, { url: u }).window.document, now: () => 2000000000 });
+  const old = { 1: { seriesId: 1, activity: 1500000000, progress: {}, signatures: {} } };
+  const out = await scanner.scanRatings({ href: 'https://www.csfd.cz/uzivatel/7-me/', id: 7 }, { nextPage: 1, ratings: old, incremental: true });
+  assert.ok(out.ratings[1].activity > 1500000000);
+});

@@ -54,6 +54,15 @@ test('real worker flow turns a profile rating into a linked next episode', async
   assert.equal(app.data.settings.profile.id, 7);
 });
 
+test('a profile URL copied without its trailing slash is accepted', async () => {
+  const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a></td><td><span class="stars stars-4"></span></td></tr></table>`;
+  const episode = `<div class="film-header"><h2><a href="/film/9-show/prehled/">Show</a></h2><h1>One (S01E01)</h1></div>`;
+  const app = workerHarness({ '/uzivatel/7-me/hodnoceni/': ratings, '/film/9-show/11-one/prehled/': episode });
+  const state = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me' });
+  assert.notEqual(state.status, 'error');
+  assert.equal(app.data.settings.profile.id, 7);
+});
+
 test('real worker keeps cached items visible when a later resolve is blocked', async () => {
   const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span><time datetime="2026-09-27"></time></td></tr></table>`;
   const episode = `<header><h2><a href="/film/9-show/prehled/">Show</a></h2><nav><a rel="next" href="/film/9-show/12-two/prehled/">next</a></nav></header>`;
@@ -75,4 +84,20 @@ test('a completed scan cancels the checkpoint continuation alarm', async () => {
   await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
   assert.ok(app.alarms.some((x) => x.name === 'continue-scan'), 'checkpoint arms recovery');
   assert.ok(app.cleared.includes('continue-scan'), 'completion cancels recovery');
+});
+
+test('full rescan abandons a partial incremental accumulator and removes stale series', async () => {
+  const routes = {};
+  for (let page = 1; page <= 6; page += 1) {
+    routes[`/uzivatel/7-me/hodnoceni/${page > 1 ? `?page=${page}` : ''}`] = `<table><tr><td class="name"><a class="film-title-name" href="/film/${page}-show/${page}1-one/prehled/">One</a></td><td><span class="stars stars-4"></span></td></tr></table>${page < 6 ? '<a class="page-next">next</a>' : ''}`;
+    routes[`/film/${page}-show/${page}1-one/prehled/`] = `<div class="film-header"><h2><a href="/film/${page}-show/prehled/">Show</a></h2></div>`;
+  }
+  const app = workerHarness(routes);
+  const partial = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  assert.equal(partial.status, 'scanning');
+  assert.ok(Object.keys(app.data['account:7'].scan.ratings).length > 0);
+  routes['/uzivatel/7-me/hodnoceni/'] = '<table></table>';
+  const complete = await app.send({ type: 'refresh', full: true });
+  assert.equal(complete.status, 'ready');
+  assert.deepEqual(Object.keys(app.data['account:7'].ratings), []);
 });
