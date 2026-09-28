@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
+global.DalsiDilI18n = require('../src/i18n.js');
 const { render, start } = require('../popup/popup.js');
 
 const page = () => new JSDOM('<main><p id="status"></p><ol id="results"></ol><section id="setup"><input id="profile"></section></main>').window.document;
@@ -8,7 +9,7 @@ const page = () => new JSDOM('<main><p id="status"></p><ol id="results"></ol><se
 test('blocked state is visible and is not rendered as an empty finished list', () => {
   const doc = page();
   render(doc, { status: 'challenge', items: [] });
-  assert.match(doc.querySelector('#status').textContent, /ČSFD.*blocked/i);
+  assert.match(doc.querySelector('#status').textContent, /ČSFD.*zablokovalo/i);
   assert.equal(doc.querySelector('#results').hidden, true);
 });
 
@@ -17,8 +18,16 @@ test('results link to the next episode and explain progress', () => {
   render(doc, { status: 'ready', items: [{ seriesTitle: 'Columbo', next: { href: '/film/1-show/2-next/prehled/', title: 'Next', code: 'S05E02' }, after: 'S05E01' }] });
   const row = doc.querySelector('li');
   assert.match(row.textContent, /Columbo/);
-  assert.match(row.textContent, /last rated: S05E01/i);
+  assert.match(row.textContent, /naposledy: S05E01/i);
   assert.match(row.querySelector('a').href, /2-next/);
+});
+
+test('Czech is the default and English can be selected', () => {
+  const doc = page();
+  render(doc, { status: 'ready', items: [{ seriesTitle: 'Columbo', next: { href: '/film/1-show/2-next/prehled/' }, after: 'S05E01' }] });
+  assert.match(doc.querySelector('li').textContent, /Naposledy/);
+  render(doc, { status: 'ready', locale: 'en', items: [{ seriesTitle: 'Columbo', next: { href: '/film/1-show/2-next/prehled/' }, after: 'S05E01' }] });
+  assert.match(doc.querySelector('li').textContent, /Last rated/);
 });
 
 test('a ready result does not describe success as a stopped refresh', () => {
@@ -37,15 +46,15 @@ test('a next episode parsed from sk links back to sk', () => {
 test('an incomplete first scan is named as partial rather than complete', () => {
   const doc = page();
   render(doc, { status: 'scanning', partial: true, page: 6, items: [] });
-  assert.match(doc.querySelector('#status').textContent, /still scanning.*page 6/i);
+  assert.match(doc.querySelector('#status').textContent, /stále.*stránka 6/i);
 });
 
 test('every failure family is rendered as an actionable visible status', () => {
   const cases = [
-    ['parser-unavailable', /parser.*unavailable|could not read/i],
+    ['parser-unavailable', /čtení ČSFD.*dostupné/i],
     ['http-503', /503|temporarily/i],
-    ['error', /unexpected|failed/i],
-    ['setup', /sign in|profile/i]
+    ['error', /nepodařilo/i],
+    ['setup', /přihlaste|profilu/i]
   ];
   for (const [status, expected] of cases) {
     const doc = page();
@@ -76,7 +85,7 @@ test('startup paints a busy state before waiting for storage or network', async 
     return { changed: false, state: { status: 'setup', count: 10, items: [] } };
   } });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(doc.querySelector('#status').textContent, /checking|loading/i);
+  assert.match(doc.querySelector('#status').textContent, /zjišťuji/i);
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'true');
   release({ status: 'setup', count: 10, items: [] });
   await started;
@@ -93,7 +102,7 @@ test('a newly detected account shows scanning before its refresh finishes', asyn
   } });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.match(doc.querySelector('#status').textContent, /scanning/i);
+  assert.match(doc.querySelector('#status').textContent, /procházím/i);
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'true');
   releaseRefresh({ status: 'ready', count: 10, items: [] });
   await started;
@@ -140,7 +149,7 @@ test('a malformed detection reply becomes an error instead of leaving a spinner'
     return { status: 'error', items: [] };
   } });
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
-  assert.match(doc.querySelector('#status').textContent, /unexpected failed/i);
+  assert.match(doc.querySelector('#status').textContent, /nepodařilo/i);
 });
 
 test('a busy background scan is polled until its finished state appears', async () => {
@@ -172,7 +181,7 @@ test('a refresh transport failure replaces the spinner with a visible error', as
   doc.querySelector('#refresh').click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(doc.querySelector('main').getAttribute('aria-busy'), 'false');
-  assert.match(doc.querySelector('#status').textContent, /unexpected failed/i);
+  assert.match(doc.querySelector('#status').textContent, /nepodařilo/i);
 });
 
 test('a button-started partial refresh begins background progress polling', async () => {

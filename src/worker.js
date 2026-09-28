@@ -51,13 +51,15 @@ const store = {
 
 async function publicState() {
   const settings = await store.get('settings') || { count: DEFAULT_COUNT };
-  if (!settings.profile) return { status: 'setup', count: settings.count || DEFAULT_COUNT, items: [], message: 'Add your ČSFD profile URL to begin.' };
+  const locale = ['cs', 'sk', 'en'].includes(settings.locale) ? settings.locale : 'cs';
+  if (!settings.profile) return { status: 'setup', count: settings.count || DEFAULT_COUNT, locale, items: [], message: '' };
   const account = await store.get(DalsiDilState.accountKey(settings.profile.id)) || {};
   const items = account.items || [];
   const needsUpgrade = items.some((item) => !account.resolved || !account.resolved[item.seriesId] || account.resolved[item.seriesId].version !== DalsiDilScan.RESOLVER_VERSION);
   return {
     status: account.status || (account.items ? 'ready' : 'idle'),
     count: settings.count || DEFAULT_COUNT,
+    locale,
     profile: settings.profile,
     items,
     needsUpgrade,
@@ -92,7 +94,7 @@ async function detectSignedInProfile() {
   if (!uncertain && signedOut === origins.length) {
     const current = await store.get('settings') || {};
     if (current.profile) await store.remove(DalsiDilState.accountKey(current.profile.id));
-    await store.set('settings', { count: current.count || DEFAULT_COUNT });
+    await store.set('settings', { count: current.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(current.locale) ? current.locale : 'cs' });
     return { state: await publicState(), changed: !!current.profile };
   }
   const state = await publicState();
@@ -199,6 +201,12 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       settings.count = Math.max(1, Math.min(25, Number(message.count) || DEFAULT_COUNT));
       await store.set('settings', settings);
       return refresh(false);
+    }
+    if (message.type === 'locale') {
+      const settings = await store.get('settings') || {};
+      settings.locale = ['cs', 'sk', 'en'].includes(message.locale) ? message.locale : 'cs';
+      await store.set('settings', settings);
+      return publicState();
     }
     if (message.type === 'refresh') return refresh(!!message.full);
     return publicState();

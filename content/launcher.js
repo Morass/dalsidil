@@ -8,6 +8,8 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
 
+  const i18n = globalThis.DalsiDilI18n;
+
   const HOST_STYLE = [
     'all:initial!important', 'position:fixed!important', 'right:18px!important',
     'top:18px!important', 'z-index:2147483647!important',
@@ -88,8 +90,10 @@
     function repaint() {
       if (!button || !panel || !list || !note) return;
       const items = state.items || [];
+      const locale = i18n.locale(state.locale);
       button.textContent = items.length ? `Další díl · ${items.length}` : 'Další díl';
-      button.setAttribute('aria-label', items.length ? `Další díl, ${items.length} položek` : 'Další díl');
+      button.setAttribute('aria-label', items.length ? `Další díl, ${i18n.t(locale, 'items', { count: items.length })}` : 'Další díl');
+      refreshButton.textContent = `↻ ${i18n.t(locale, 'refresh')}`;
       list.textContent = '';
       for (const item of items) {
         if (!item || !item.next || !item.next.href) continue;
@@ -97,21 +101,21 @@
         const title = doc.createElement('strong');
         const detail = doc.createElement('small');
         const link = doc.createElement('a');
-        title.textContent = item.seriesTitle || 'Seriál';
-        detail.textContent = item.after ? `Naposledy: ${item.after}` : 'Další epizoda';
+        title.textContent = item.seriesTitle || i18n.t(locale, 'series');
+        detail.textContent = item.after ? `${i18n.t(locale, 'lastRated')}: ${item.after}` : i18n.t(locale, 'nextEpisode');
         link.href = linkFor(item);
         link.target = '_blank';
         link.rel = 'noreferrer';
         link.textContent = item.next.code
           ? `${item.next.code}${item.next.title ? ` · ${item.next.title}` : ''}`
-          : (item.next.title || 'Otevřít →');
+          : (item.next.title || i18n.t(locale, 'openNext'));
         row.append(title, detail, link);
         list.appendChild(row);
       }
       note.hidden = list.children.length > 0;
       note.textContent = state.status === 'setup'
-        ? 'Nastavení a první načtení najdete v ikoně rozšíření.'
-        : 'V uloženém výběru zatím nic není. Obnovit ho můžete v ikoně rozšíření.';
+        ? i18n.t(locale, 'launcherSetup')
+        : i18n.t(locale, 'launcherEmpty');
     }
 
     function buildHost() {
@@ -148,7 +152,7 @@
       const nextRefreshButton = doc.createElement('button');
       nextRefreshButton.className = 'refresh';
       nextRefreshButton.type = 'button';
-      nextRefreshButton.textContent = '↻ Obnovit';
+      nextRefreshButton.textContent = '↻';
       nextRefreshButton.addEventListener('click', () => { refresh(); });
       nextPanel.append(heading, nextRefreshStatus, nextRefreshButton, nextNote, nextList);
       wrap.append(nextButton, nextPanel);
@@ -200,7 +204,8 @@
       if (refreshInFlight) return refreshInFlight;
       refreshButton.disabled = true;
       refreshStatus.hidden = false;
-      refreshStatus.textContent = 'Obnovuji hodnocení…';
+      const locale = i18n.locale(state.locale);
+      refreshStatus.textContent = i18n.t(locale, 'refreshing');
       const work = (async () => {
         try {
           const next = validateState(await chromeApi.runtime.sendMessage({ type: 'refresh', full: false }));
@@ -208,10 +213,10 @@
           acceptState(next);
           ensureAttached();
           refreshStatus.textContent = next.status === 'scanning'
-            ? 'Aktualizace pokračuje na pozadí.'
-            : 'Hotovo.';
+            ? i18n.t(i18n.locale(next.locale), 'background')
+            : i18n.t(i18n.locale(next.locale), 'done');
         } catch (_) {
-          refreshStatus.textContent = 'Obnovení se nepodařilo. Zkuste to znovu.';
+          refreshStatus.textContent = i18n.t(locale, 'refreshFailed');
         } finally {
           refreshButton.disabled = false;
           refreshInFlight = null;
@@ -261,10 +266,13 @@
       focusFirstLink: () => { const link = list && list.querySelector('a'); if (link) link.focus(); },
       focusedLink: () => shadow && shadow.activeElement && shadow.activeElement.tagName === 'A' ? shadow.activeElement.href : null,
       snapshot: () => ({
+        locale: i18n.locale(state.locale),
         open: !!(panel && !panel.hidden),
         focusedControl: shadow && shadow.activeElement === refreshButton ? 'refresh' : null,
         refreshDisabled: !!(refreshButton && refreshButton.disabled),
         refreshStatus: refreshStatus ? refreshStatus.textContent : '',
+        refreshLabel: refreshButton ? refreshButton.textContent : '',
+        rowDetails: list ? [...list.children].map((row) => row.querySelector('small').textContent) : [],
         rows: list ? [...list.children].map((row) => ({
           title: row.querySelector('strong').textContent,
           href: row.querySelector('a').href

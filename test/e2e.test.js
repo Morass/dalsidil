@@ -82,6 +82,18 @@ test('real worker flow turns a profile rating into a linked next episode', async
   assert.equal(app.data.settings.profile.id, 7);
 });
 
+test('language defaults to Czech and persists without starting a scan', async () => {
+  const app = workerHarness({});
+  const initial = await app.send({ type: 'state' });
+  assert.equal(initial.locale, 'cs');
+  const changed = await app.send({ type: 'locale', locale: 'sk' });
+  assert.equal(changed.locale, 'sk');
+  assert.equal(app.data.settings.locale, 'sk');
+  assert.equal(app.parsedRequests.length, 0);
+  const rejected = await app.send({ type: 'locale', locale: 'xx' });
+  assert.equal(rejected.locale, 'cs');
+});
+
 test('opening the extension discovers the current signed-in account and scans it', async () => {
   const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
   const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>`;
@@ -135,12 +147,13 @@ test('an unexpected error keeps recovery armed for a checkpointed partial scan',
 test('definite logout clears the previously selected account', async () => {
   const signedOut = '<header class="page-header user-not-logged"></header>';
   const app = workerHarness({ 'https://www.csfd.cz/': signedOut, 'https://www.csfd.sk/': signedOut });
-  app.data.settings = { count: 12, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
+  app.data.settings = { count: 12, locale: 'sk', profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
   app.data['account:7'] = { items: [{ private: 'derived' }] };
   const detected = await app.send({ type: 'detect' });
   assert.equal(detected.state.status, 'setup');
   assert.equal(app.data.settings.profile, undefined);
   assert.equal(app.data.settings.count, 12);
+  assert.equal(app.data.settings.locale, 'sk');
   assert.equal(app.data['account:7'], undefined);
 });
 

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
+global.DalsiDilI18n = require('../src/i18n.js');
 const { createLauncher } = require('../content/launcher.js');
 
 function page(url = 'https://www.csfd.cz/film/1-show/prehled/') {
@@ -286,6 +287,20 @@ test('opening a populated panel moves keyboard focus to its refresh action', asy
   await launcher.start();
   launcher.click();
   assert.equal(launcher.snapshot().focusedControl, 'refresh');
+  launcher.stop();
+});
+
+test('launcher follows the cached language setting', async () => {
+  const dom = page();
+  const launcher = createLauncher(dom.window.document, apiWith({ status: 'ready', locale: 'sk', items: [{
+    seriesTitle: 'Show', after: 'S01E01', next: { href: '/film/3-show/4-next/prehled/' }
+  }] }));
+  await launcher.start();
+  launcher.click();
+  const snapshot = launcher.snapshot();
+  assert.equal(snapshot.locale, 'sk');
+  assert.match(snapshot.refreshLabel, /Obnoviť/);
+  assert.match(snapshot.rowDetails[0], /Naposledy/);
   launcher.stop();
 });
 

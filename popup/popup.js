@@ -5,35 +5,48 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
 
-  const messages = {
-    challenge: 'ČSFD blocked the refresh. Open ČSFD in a tab, complete its check, then refresh here.',
-    network: 'ČSFD could not be reached. Cached results are shown below.',
-    'parser-unavailable': 'ČSFD parser unavailable. Close and reopen the extension, then try again.',
-    detecting: 'Checking which ČSFD account is signed in…',
-    resolving: 'Finding the following episodes and their names…',
-    setup: 'Sign in to ČSFD, or add your profile URL in Settings.',
-    idle: 'Account found. Starting the first scan…',
-    error: 'Something unexpected failed. Reopen the extension and try again.',
-    ready: '',
-    empty: 'No unfinished rated series found yet.'
-  };
+  const i18n = globalThis.DalsiDilI18n;
+  const statusKeys = { challenge: 'challenge', network: 'network', 'parser-unavailable': 'parserUnavailable', detecting: 'detecting', resolving: 'resolving', setup: 'setup', idle: 'idle', error: 'error' };
+  const language = (state) => i18n.locale(state && state.locale);
 
   function statusMessage(state) {
+    const locale = language(state);
     if (state.message && !/^Refresh stopped:/.test(state.message)) return state.message;
-    if (/^http-\d+$/.test(state.status || '')) return `ČSFD returned error ${state.status.slice(5)}. Cached results are shown below.`;
-    if (Object.prototype.hasOwnProperty.call(messages, state.status)) return messages[state.status];
+    if (/^http-\d+$/.test(state.status || '')) return i18n.t(locale, 'httpError', { code: state.status.slice(5) });
+    if (statusKeys[state.status]) return i18n.t(locale, statusKeys[state.status]);
+    if (state.status === 'ready') return '';
     if (state.message) return state.message;
-    return state.status ? `Refresh stopped: ${state.status}. Try again.` : '';
+    return state.status ? i18n.t(locale, 'stopped', { status: state.status }) : '';
+  }
+
+  function localize(doc, locale) {
+    doc.documentElement.lang = locale;
+    const values = { '#subtitle': 'subtitle', '#profile-label': 'profile', '#count-label': 'count', '#language-label': 'language', '#privacy': 'privacy' };
+    for (const [selector, key] of Object.entries(values)) {
+      const element = doc.querySelector(selector);
+      if (element) element.textContent = i18n.t(locale, key);
+    }
+    const summary = doc.querySelector('#setup summary');
+    if (summary) summary.textContent = i18n.t(locale, 'settings');
+    const refresh = doc.querySelector('#refresh');
+    if (refresh) {
+      refresh.title = i18n.t(locale, 'refresh');
+      refresh.setAttribute('aria-label', i18n.t(locale, 'refresh'));
+    }
+    const full = doc.querySelector('#full-refresh');
+    if (full) full.textContent = i18n.t(locale, 'fullRefresh');
   }
 
   function render(doc, state) {
+    const locale = language(state);
+    localize(doc, locale);
     const status = doc.querySelector('#status');
     const list = doc.querySelector('#results');
     list.textContent = '';
     const items = state.items || [];
     let note = statusMessage(state);
-    if (state.status === 'scanning') note = `Still scanning your ratings — page ${state.page || 1}. Cached results stay usable.`;
-    if (state.status === 'ready' && !items.length && !note) note = messages.empty;
+    if (state.status === 'scanning') note = i18n.t(locale, 'scanning', { page: state.page || 1 });
+    if (state.status === 'ready' && !items.length && !note) note = i18n.t(locale, 'empty');
     status.textContent = note;
     status.hidden = !note;
     const busy = ['detecting', 'scanning', 'resolving'].includes(state.status);
@@ -45,12 +58,12 @@
       const title = doc.createElement('strong');
       title.textContent = item.seriesTitle;
       const detail = doc.createElement('small');
-      detail.textContent = `Last rated: ${item.after || 'your latest episode rating'}`;
+      detail.textContent = `${i18n.t(locale, 'lastRated')}: ${item.after || i18n.t(locale, 'latestRating')}`;
       const link = doc.createElement('a');
       link.href = new URL(item.next.href, item.next.host || item.host || 'https://www.csfd.cz/').href;
       link.target = '_blank';
       link.rel = 'noreferrer';
-      link.textContent = item.next.code ? `${item.next.code}${item.next.title ? ` · ${item.next.title}` : ''}` : (item.next.title || 'Open next →');
+      link.textContent = item.next.code ? `${item.next.code}${item.next.title ? ` · ${item.next.title}` : ''}` : (item.next.title || i18n.t(locale, 'openNext'));
       row.append(title, detail, link);
       list.appendChild(row);
     }
@@ -61,6 +74,7 @@
     const profile = doc.querySelector('#profile');
     const refresh = doc.querySelector('#refresh');
     const fullRefresh = doc.querySelector('#full-refresh');
+    const localeSelect = doc.querySelector('#locale');
     let saved = { status: 'detecting', count: 10, items: [] };
     const isBusy = (state) => ['detecting', 'scanning', 'resolving'].includes(state && state.status);
     const schedule = api.schedule || ((fn) => setTimeout(fn, 1500));
@@ -84,6 +98,7 @@
     catch (_) { render(doc, { status: 'error', items: [], message: '' }); return; }
     count.value = saved.count || 10;
     profile.value = saved.profile && saved.profile.href || '';
+    if (localeSelect) localeSelect.value = language(saved);
     render(doc, Object.assign({}, saved, { status: 'detecting', message: '' }));
     let detected;
     try { detected = await api.send({ type: 'detect' }); }
@@ -94,6 +109,7 @@
     }
     saved = detected.state;
     profile.value = saved.profile && saved.profile.href || '';
+    if (localeSelect) localeSelect.value = language(saved);
     render(doc, saved);
     if (detected.changed || saved.status === 'idle') {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: saved.page || 1 }));
@@ -106,6 +122,13 @@
       try { saved = await api.send({ type: 'count', count: Number(count.value) }); render(doc, saved); }
       catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
       watchBusy();
+    });
+    if (localeSelect) localeSelect.addEventListener('change', async () => {
+      const requested = i18n.locale(localeSelect.value);
+      saved = Object.assign({}, saved, { locale: requested });
+      render(doc, saved);
+      try { saved = await api.send({ type: 'locale', locale: requested }); render(doc, saved); }
+      catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
     });
     profile.addEventListener('change', async () => {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
@@ -131,5 +154,5 @@
     });
   }
 
-  return { render, start };
+  return { render, start, localize };
 });

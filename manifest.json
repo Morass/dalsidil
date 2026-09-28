@@ -14,7 +14,7 @@
   "background": { "service_worker": "src/worker.js" },
   "content_scripts": [{
     "matches": ["https://www.csfd.cz/*", "https://www.csfd.sk/*"],
-    "js": ["content/launcher.js"],
+    "js": ["src/i18n.js", "content/launcher.js"],
     "run_at": "document_start"
   }],
   "action": {
