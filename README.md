@@ -18,8 +18,6 @@ Sign in to ČSFD normally, then open Další díl. It identifies the signed-in a
 
 The first scan can take several short passes when your ratings history is long. You can close the popup while it works; progress is saved.
 
-![The Další díl toolbar popup](screenshots/dalsidil-popup.png)
-
 Each row shows the last normally numbered episode you rated and links directly to the following episode. The most recently active series appear first, and finished series are left out.
 
 ## Use it on ČSFD
@@ -31,8 +29,6 @@ Open **Nastavení** to:
 - show between 1 and 25 series;
 - choose Czech, Slovak, or English—the default is Czech;
 - run **Načíst vše znovu** after removing old ratings or when you want to rebuild all progress.
-
-![Language and scan settings](screenshots/dalsidil-settings.png)
 
 If ČSFD asks for a browser check, complete it in a normal ČSFD tab and refresh Další díl again. Saved results remain visible while a refresh is unavailable.
 
