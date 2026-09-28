@@ -25,7 +25,9 @@
     button{border:0;color:#fff;font:700 14px/1 system-ui,-apple-system,sans-serif;cursor:pointer}
     button:disabled{opacity:.6;cursor:default}
     .launcher{display:block;margin-left:auto;border-radius:999px;padding:11px 16px;background:#d53b37;box-shadow:0 3px 14px #0007}
-    .refresh{margin:12px 16px 0;border-radius:6px;padding:9px 12px;background:#354c5d}
+    .controls{display:flex;gap:8px;align-items:center;margin:12px 16px 0}
+    .refresh{border-radius:6px;padding:9px 12px;background:#354c5d}
+    select{min-width:112px;margin-left:auto;border:1px solid #65717a;border-radius:6px;padding:8px;background:#20262b;color:#fff;font:14px/1.2 system-ui,-apple-system,sans-serif;cursor:pointer}
     button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:2px}
     .panel{position:absolute;right:0;top:48px;width:min(360px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 90px));overflow:auto;border:1px solid #4b555d;border-radius:10px;background:#15191d;box-shadow:0 7px 28px #0009}
     .panel[hidden]{display:none}
@@ -48,6 +50,7 @@
     let list = null;
     let note = null;
     let refreshButton = null;
+    let languageSelect = null;
     let refreshStatus = null;
     let refreshInFlight = null;
     let state = { status: 'setup', items: [] };
@@ -95,6 +98,8 @@
       button.textContent = items.length ? `Další díl · ${items.length}` : 'Další díl';
       button.setAttribute('aria-label', items.length ? `Další díl, ${i18n.t(locale, 'items', { count: items.length })}` : 'Další díl');
       refreshButton.textContent = `↻ ${i18n.t(locale, 'refresh')}`;
+      languageSelect.setAttribute('aria-label', i18n.t(locale, 'language'));
+      languageSelect.value = locale;
       list.textContent = '';
       for (const item of items) {
         if (!item || !item.next || !item.next.href) continue;
@@ -155,7 +160,18 @@
       nextRefreshButton.type = 'button';
       nextRefreshButton.textContent = '↻';
       nextRefreshButton.addEventListener('click', () => { refresh(); });
-      nextPanel.append(heading, nextRefreshStatus, nextRefreshButton, nextNote, nextList);
+      const controls = doc.createElement('div');
+      controls.className = 'controls';
+      const nextLanguageSelect = doc.createElement('select');
+      for (const [value, label] of [['cs', 'Čeština'], ['sk', 'Slovenčina'], ['en', 'English']]) {
+        const option = doc.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        nextLanguageSelect.appendChild(option);
+      }
+      nextLanguageSelect.addEventListener('change', () => { setLocale(nextLanguageSelect.value); });
+      controls.append(nextRefreshButton, nextLanguageSelect);
+      nextPanel.append(heading, nextRefreshStatus, controls, nextNote, nextList);
       wrap.append(nextButton, nextPanel);
       root.append(style, wrap);
       currentHost = host;
@@ -165,6 +181,7 @@
       list = nextList;
       note = nextNote;
       refreshButton = nextRefreshButton;
+      languageSelect = nextLanguageSelect;
       refreshStatus = nextRefreshStatus;
       repaint();
       return host;
@@ -231,6 +248,24 @@
       return work;
     }
 
+    async function setLocale(locale) {
+      const requested = i18n.locale(locale);
+      if (!languageSelect || languageSelect.disabled) return;
+      languageSelect.disabled = true;
+      try {
+        const next = validateState(await chromeApi.runtime.sendMessage({ type: 'locale', locale: requested }));
+        readGeneration += 1;
+        acceptState(next);
+        ensureAttached();
+      } catch (_) {
+        languageSelect.value = i18n.locale(state.locale);
+        refreshStatus.hidden = false;
+        refreshStatus.textContent = i18n.t(i18n.locale(state.locale), 'refreshFailed');
+      } finally {
+        languageSelect.disabled = false;
+      }
+    }
+
     function onStorageChanged(_changes, area) {
       if (area !== 'local' || stopped) return;
       readCachedState().then((current) => { if (current) ensureAttached(); }).catch(() => {
@@ -265,7 +300,7 @@
     }
 
     return {
-      start, stop, refresh,
+      start, stop, refresh, selectLocale: setLocale,
       host: () => currentHost,
       click: () => { if (button) button.click(); },
       focusFirstLink: () => { const link = list && list.querySelector('a'); if (link) link.focus(); },
@@ -277,6 +312,7 @@
         refreshDisabled: !!(refreshButton && refreshButton.disabled),
         refreshStatus: refreshStatus ? refreshStatus.textContent : '',
         refreshLabel: refreshButton ? refreshButton.textContent : '',
+        languageValue: languageSelect ? languageSelect.value : '',
         rowDetails: list ? [...list.children].map((row) => row.querySelector('small').textContent) : [],
         rows: list ? [...list.children].map((row) => ({
           title: row.querySelector('strong').textContent,

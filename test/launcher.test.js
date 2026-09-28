@@ -327,6 +327,29 @@ test('a storage-only language change repaints the launcher', async () => {
   launcher.stop();
 });
 
+test('page-panel language selector persists locally without refreshing ratings', async () => {
+  const dom = page();
+  const messages = [];
+  let state = { status: 'ready', locale: 'cs', items: [] };
+  const api = {
+    runtime: { async sendMessage(message) {
+      messages.push(message);
+      if (message.type === 'locale') state = { ...state, locale: message.locale };
+      return structuredClone(state);
+    } },
+    storage: { onChanged: { addListener() {}, removeListener() {} } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  launcher.click();
+  await launcher.selectLocale('en');
+  assert.deepEqual(messages, [{ type: 'state' }, { type: 'locale', locale: 'en' }]);
+  assert.equal(launcher.snapshot().locale, 'en');
+  assert.equal(launcher.snapshot().languageValue, 'en');
+  assert.equal(launcher.snapshot().refreshLabel, '↻ Refresh');
+  launcher.stop();
+});
+
 test('refresh reports returned failure state instead of claiming success', async () => {
   const dom = page();
   const api = apiWith({ status: 'network', locale: 'en', items: [] });
