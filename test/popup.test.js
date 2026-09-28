@@ -21,6 +21,13 @@ test('results link to the next episode and explain progress', () => {
   assert.match(row.querySelector('a').href, /2-next/);
 });
 
+test('a ready result does not describe success as a stopped refresh', () => {
+  const doc = page();
+  render(doc, { status: 'ready', items: [{ seriesTitle: 'Show', next: { href: '/film/1-show/2-next/prehled/' } }] });
+  assert.equal(doc.querySelector('#status').hidden, true);
+  assert.equal(doc.querySelector('#status').textContent, '');
+});
+
 test('a next episode parsed from sk links back to sk', () => {
   const doc = page();
   render(doc, { status: 'ready', items: [{ seriesTitle: 'Show', next: { href: '/film/1-show/2-next/prehled/', host: 'https://www.csfd.sk', title: 'Next' } }] });

@@ -21,7 +21,7 @@
   function statusMessage(state) {
     if (state.message && !/^Refresh stopped:/.test(state.message)) return state.message;
     if (/^http-\d+$/.test(state.status || '')) return `ČSFD returned error ${state.status.slice(5)}. Cached results are shown below.`;
-    if (messages[state.status]) return messages[state.status];
+    if (Object.prototype.hasOwnProperty.call(messages, state.status)) return messages[state.status];
     if (state.message) return state.message;
     return state.status ? `Refresh stopped: ${state.status}. Try again.` : '';
   }
