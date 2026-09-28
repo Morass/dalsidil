@@ -38,7 +38,7 @@
       const profile = parseProfile(link.getAttribute('href'), base);
       if (profile) return { state: 'in', profile };
     }
-    return { state: loginFlag(doc) === true ? 'unknown' : 'out', profile: null };
+    return { state: 'unknown', profile: null };
   }
 
   return { parseProfile, detectProfile };

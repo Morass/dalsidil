@@ -84,6 +84,7 @@ async function publicState() {
 }
 
 async function detectSignedInProfile() {
+  const selectionAtStart = accountGeneration;
   const initial = await store.get('settings') || {};
   const preferred = initial.profile ? new URL(initial.profile.href).origin : 'https://www.csfd.cz';
   const origins = [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk'].filter((value, index, all) => all.indexOf(value) === index);
@@ -97,6 +98,7 @@ async function detectSignedInProfile() {
       if (found.state === 'unknown') uncertain = true;
       if (found.state === 'out') signedOut += 1;
       if (found.profile) {
+        if (selectionAtStart !== accountGeneration) return { state: await publicState(), changed: false };
         const current = await store.get('settings') || {};
         const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
         if (changed) accountGeneration += 1;
@@ -110,9 +112,11 @@ async function detectSignedInProfile() {
     const current = await store.get('settings') || {};
     if (current.profile) {
       accountGeneration += 1;
+      await updateSettings((latest) => ({ count: latest.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(latest.locale) ? latest.locale : 'cs' }));
       await store.remove(DalsiDilState.accountKey(current.profile.id));
+    } else {
+      await updateSettings((latest) => ({ count: latest.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(latest.locale) ? latest.locale : 'cs' }));
     }
-    await updateSettings((latest) => ({ count: latest.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(latest.locale) ? latest.locale : 'cs' }));
     return { state: await publicState(), changed: !!current.profile };
   }
   const state = await publicState();

@@ -10,6 +10,11 @@ fail=0
 hit() { echo "✗ $1"; fail=1; }
 self=':!*prepublish-check.sh'   # wherever the script lives: scripts/ or Scripts/
 
+if ! git rev-parse --git-dir >/dev/null 2>&1 || ! git ls-files >/dev/null || ! git log --all --format='%H' >/dev/null; then
+	echo "✗ could not inspect Git files and history"
+	exit 1
+fi
+
 while read -r e; do
 	case "$e" in
 	*@users.noreply.github.com | "") ;;

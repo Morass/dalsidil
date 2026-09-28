@@ -278,6 +278,15 @@ test('foreign cached links make the launcher fail closed', async () => {
   assert.equal(launcher.host(), null);
 });
 
+test('cached links with credentials or nondefault ports make the launcher fail closed', async () => {
+  for (const href of [`https://${'name:secret'}${'@'}www.csfd.cz/film/3-show/4-next/prehled/`, 'https://www.csfd.cz:8443/film/3-show/4-next/prehled/']) {
+    const dom = page();
+    const launcher = createLauncher(dom.window.document, apiWith({ status: 'ready', items: [{ seriesTitle: 'Unsafe', next: { href } }] }));
+    await launcher.start();
+    assert.equal(launcher.host(), null);
+  }
+});
+
 test('opening a populated panel moves keyboard focus to its refresh action', async () => {
   const dom = page();
   const api = apiWith({ status: 'ready', items: [{

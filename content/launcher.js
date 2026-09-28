@@ -61,7 +61,7 @@
 
     function linkFor(item) {
       const url = new URL(item.next.href, item.next.host || item.host || doc.location.origin);
-      if (url.protocol !== 'https:' || !['www.csfd.cz', 'www.csfd.sk'].includes(url.hostname)) {
+      if (url.protocol !== 'https:' || url.port || url.username || url.password || !['www.csfd.cz', 'www.csfd.sk'].includes(url.hostname)) {
         throw new Error('invalid cached link');
       }
       return url.href;

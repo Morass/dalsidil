@@ -89,6 +89,7 @@
     const isBusy = (state) => ['detecting', 'scanning', 'resolving'].includes(state && state.status);
     const schedule = api.schedule || ((fn) => setTimeout(fn, 1500));
     let pollScheduled = false;
+    if (localeSelect) localeSelect.disabled = true;
     const watchBusy = () => {
       if (!isBusy(saved) || pollScheduled) return;
       pollScheduled = true;
@@ -133,13 +134,16 @@
       catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
       watchBusy();
     });
-    if (localeSelect) localeSelect.addEventListener('change', async () => {
+    if (localeSelect) {
+      localeSelect.disabled = false;
+      localeSelect.addEventListener('change', async () => {
       const requested = i18n.locale(localeSelect.value);
       saved = Object.assign({}, saved, { locale: requested });
       render(doc, saved);
       try { saved = await api.send({ type: 'locale', locale: requested }); render(doc, saved); }
       catch (_) { render(doc, Object.assign({}, saved, { status: 'error', message: '' })); }
-    });
+      });
+    }
     profile.addEventListener('change', async () => {
       render(doc, Object.assign({}, saved, { status: 'scanning', page: 1 }));
       try { saved = await api.send({ type: 'profile', href: profile.value }); render(doc, saved); }

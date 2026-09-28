@@ -202,6 +202,22 @@ test('login detection preserves a setting changed while its request is in flight
   assert.equal(app.data.settings.count, 23);
 });
 
+test('delayed detection cannot overwrite a newer manual profile selection', async () => {
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const oldHome = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-old/">Old</a></li></ul></header>';
+  const app = workerHarness({
+    '/': async () => { await waiting; return oldHome; },
+    '/uzivatel/8-new/hodnoceni/': '<table></table>'
+  });
+  const detection = app.send({ type: 'detect' });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/8-new/' });
+  release();
+  await detection;
+  assert.equal(app.data.settings.profile.id, 8);
+});
+
 test('an offscreen parser failure releases the scan lease with an explicit status', async () => {
   const app = workerHarness({ '/uzivatel/7-me/hodnoceni/': new Error('parser disappeared') });
   const state = await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });

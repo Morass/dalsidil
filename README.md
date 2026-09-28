@@ -45,7 +45,7 @@ Derived progress, language and display settings, and cached links stay in Chrome
 ## Limits
 
 - A rating is treated as evidence of progress; unrated watched episodes cannot be inferred.
-- Rating an older episode later makes the series recent but does not move established progress backward. On the first scan, an unusual late vote on an older episode can initially be taken as the current position because ČSFD's ratings table sometimes omits episode numbers.
+- When episode numbering is available, rating an older episode later makes the series recent without moving established progress backward. When ČSFD omits episode numbers, an unusual vote order can initially choose the wrong current episode.
 - Removed ratings are reconciled by **Načíst vše znovu**, not necessarily by the next short refresh.
 - Specials without normal season and episode numbering follow ČSFD's own navigation where possible.
 - A major ČSFD markup change or browser check can temporarily stop a refresh. Cached results remain available.

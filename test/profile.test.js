@@ -27,6 +27,11 @@ test('a bot challenge is unknown rather than a definite logout', () => {
   assert.deepEqual(detectProfile(doc), { state: 'unknown', profile: null });
 });
 
+test('an unrecognized success page is unknown rather than a logout', () => {
+  const doc = documentFor('<main>Temporarily unavailable</main>');
+  assert.deepEqual(detectProfile(doc), { state: 'unknown', profile: null });
+});
+
 test('profile addresses are normalized and foreign hosts are rejected', () => {
   assert.deepEqual(parseProfile('https://www.csfd.sk/en/user/8-reader'), { id: 8, href: 'https://www.csfd.sk/en/user/8-reader/' });
   assert.equal(parseProfile('https://example.com/uzivatel/8-reader/'), null);
