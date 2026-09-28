@@ -350,6 +350,67 @@ test('page-panel language selector persists locally without refreshing ratings',
   launcher.stop();
 });
 
+test('a delayed locale reply cannot overwrite a newer storage locale', async () => {
+  const dom = page();
+  let storageListener;
+  let releaseLocale;
+  const localeReply = new Promise((resolve) => { releaseLocale = resolve; });
+  let current = { status: 'ready', locale: 'cs', items: [] };
+  const api = {
+    runtime: { async sendMessage(message) {
+      if (message.type === 'locale') return localeReply;
+      return structuredClone(current);
+    } },
+    storage: { onChanged: {
+      addListener(fn) { storageListener = fn; }, removeListener() {}
+    } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  const choosing = launcher.selectLocale('en');
+  current = { ...current, locale: 'sk' };
+  storageListener({ settings: { newValue: { locale: 'sk' } } }, 'local');
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseLocale({ ...current, locale: 'en' });
+  await choosing;
+  assert.equal(launcher.snapshot().locale, 'sk');
+  assert.equal(launcher.snapshot().languageValue, 'sk');
+  launcher.stop();
+});
+
+test('visible refresh status follows a later language change', async () => {
+  const dom = page();
+  let state = { status: 'ready', locale: 'cs', items: [] };
+  const api = {
+    runtime: { async sendMessage(message) {
+      if (message.type === 'locale') state = { ...state, locale: message.locale };
+      return structuredClone(state);
+    } }, storage: { onChanged: { addListener() {}, removeListener() {} } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  await launcher.refresh();
+  assert.equal(launcher.snapshot().refreshStatus, 'Hotovo.');
+  await launcher.selectLocale('en');
+  assert.equal(launcher.snapshot().refreshStatus, 'Done.');
+  launcher.stop();
+});
+
+test('a failed locale save reports a settings error rather than a ratings refresh error', async () => {
+  const dom = page();
+  const api = {
+    runtime: { async sendMessage(message) {
+      if (message.type === 'locale') throw new Error('storage unavailable');
+      return { status: 'ready', locale: 'en', items: [] };
+    } }, storage: { onChanged: { addListener() {}, removeListener() {} } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  await launcher.selectLocale('sk');
+  assert.match(launcher.snapshot().refreshStatus, /language setting could not be saved/i);
+  launcher.stop();
+});
+
 test('refresh reports returned failure state instead of claiming success', async () => {
   const dom = page();
   const api = apiWith({ status: 'network', locale: 'en', items: [] });

@@ -166,6 +166,15 @@
       finally { fullRefresh.disabled = false; }
       watchBusy();
     });
+    if (api.watch) api.watch(async () => {
+      try {
+        saved = await api.send({ type: 'state' });
+        count.value = saved.count || 10;
+        profile.value = saved.profile && saved.profile.href || '';
+        if (localeSelect) localeSelect.value = language(saved);
+        render(doc, saved);
+      } catch (_) { /* keep the last usable state */ }
+    });
   }
 
   return { render, start, localize };

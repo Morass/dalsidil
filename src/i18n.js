@@ -27,6 +27,7 @@
       , identifyFailed: 'Přihlášený účet na ČSFD se nepodařilo zjistit. Otevřete ČSFD a zkuste to znovu nebo přidejte adresu profilu v Nastavení.'
       , signedOut: 'Přihlaste se na ČSFD a znovu otevřete rozšíření. Adresu profilu můžete přidat také v Nastavení.'
       , invalidProfile: 'Toto není platná adresa profilu na ČSFD.'
+      , localeSaveFailed: 'Nastavení jazyka se nepodařilo uložit. Zkuste to znovu.'
     },
     sk: {
       subtitle: 'Ďalšie epizódy podľa hodnotení na ČSFD', refresh: 'Obnoviť', settings: 'Nastavenia',
@@ -47,6 +48,7 @@
       , identifyFailed: 'Prihlásený účet na ČSFD sa nepodarilo zistiť. Otvorte ČSFD a skúste to znova alebo pridajte adresu profilu v Nastaveniach.'
       , signedOut: 'Prihláste sa na ČSFD a znova otvorte rozšírenie. Adresu profilu môžete pridať aj v Nastaveniach.'
       , invalidProfile: 'Toto nie je platná adresa profilu na ČSFD.'
+      , localeSaveFailed: 'Nastavenie jazyka sa nepodarilo uložiť. Skúste to znova.'
     },
     en: {
       subtitle: 'Your next episodes from ČSFD ratings', refresh: 'Refresh', settings: 'Settings',
@@ -67,6 +69,7 @@
       , identifyFailed: 'Could not identify the signed-in ČSFD account. Open ČSFD, then try again or add the profile URL in Settings.'
       , signedOut: 'Sign in to ČSFD, then reopen this extension. You can also add the profile URL in Settings.'
       , invalidProfile: 'That is not a ČSFD profile URL.'
+      , localeSaveFailed: 'The language setting could not be saved. Try again.'
     }
   };
 

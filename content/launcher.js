@@ -52,7 +52,10 @@
     let refreshButton = null;
     let languageSelect = null;
     let refreshStatus = null;
+    let refreshStatusKey = null;
+    let refreshStatusArgs = null;
     let refreshInFlight = null;
+    let localeInFlight = null;
     let state = { status: 'setup', items: [] };
     let documentObserver = null;
     let rootObserver = null;
@@ -100,6 +103,7 @@
       refreshButton.textContent = `↻ ${i18n.t(locale, 'refresh')}`;
       languageSelect.setAttribute('aria-label', i18n.t(locale, 'language'));
       languageSelect.value = locale;
+      if (refreshStatusKey && !refreshStatus.hidden) refreshStatus.textContent = i18n.t(locale, refreshStatusKey, refreshStatusArgs);
       list.textContent = '';
       for (const item of items) {
         if (!item || !item.next || !item.next.href) continue;
@@ -223,7 +227,9 @@
       refreshButton.disabled = true;
       refreshStatus.hidden = false;
       const locale = i18n.locale(state.locale);
-      refreshStatus.textContent = i18n.t(locale, 'refreshing');
+      refreshStatusKey = 'refreshing';
+      refreshStatusArgs = null;
+      refreshStatus.textContent = i18n.t(locale, refreshStatusKey);
       const work = (async () => {
         try {
           const next = validateState(await chromeApi.runtime.sendMessage({ type: 'refresh', full: false }));
@@ -231,14 +237,17 @@
           acceptState(next);
           ensureAttached();
           const nextLocale = i18n.locale(next.locale);
-          refreshStatus.textContent = next.status === 'scanning'
-            ? i18n.t(nextLocale, 'background')
-            : next.status === 'challenge' ? i18n.t(nextLocale, 'challenge')
-              : next.status === 'network' ? i18n.t(nextLocale, 'network')
-                : /^http-/.test(next.status || '') ? i18n.t(nextLocale, 'httpError', { code: next.status.slice(5) })
-                  : next.status === 'ready' ? i18n.t(nextLocale, 'done') : i18n.t(nextLocale, 'refreshFailed');
+          refreshStatusKey = next.status === 'scanning' ? 'background'
+            : next.status === 'challenge' ? 'challenge'
+              : next.status === 'network' ? 'network'
+                : /^http-/.test(next.status || '') ? 'httpError'
+                  : next.status === 'ready' ? 'done' : 'refreshFailed';
+          refreshStatusArgs = refreshStatusKey === 'httpError' ? { code: next.status.slice(5) } : null;
+          refreshStatus.textContent = i18n.t(nextLocale, refreshStatusKey, refreshStatusArgs);
         } catch (_) {
-          refreshStatus.textContent = i18n.t(locale, 'refreshFailed');
+          refreshStatusKey = 'refreshFailed';
+          refreshStatusArgs = null;
+          refreshStatus.textContent = i18n.t(locale, refreshStatusKey);
         } finally {
           refreshButton.disabled = false;
           refreshInFlight = null;
@@ -248,22 +257,32 @@
       return work;
     }
 
-    async function setLocale(locale) {
+    function setLocale(locale) {
       const requested = i18n.locale(locale);
-      if (!languageSelect || languageSelect.disabled) return;
+      if (!languageSelect) return Promise.resolve();
+      if (localeInFlight) return localeInFlight;
+      const generation = ++readGeneration;
       languageSelect.disabled = true;
-      try {
-        const next = validateState(await chromeApi.runtime.sendMessage({ type: 'locale', locale: requested }));
-        readGeneration += 1;
-        acceptState(next);
-        ensureAttached();
-      } catch (_) {
-        languageSelect.value = i18n.locale(state.locale);
-        refreshStatus.hidden = false;
-        refreshStatus.textContent = i18n.t(i18n.locale(state.locale), 'refreshFailed');
-      } finally {
-        languageSelect.disabled = false;
-      }
+      const work = (async () => {
+        try {
+          const next = validateState(await chromeApi.runtime.sendMessage({ type: 'locale', locale: requested }));
+          if (generation !== readGeneration) return;
+          acceptState(next);
+          ensureAttached();
+        } catch (_) {
+          if (generation !== readGeneration) return;
+          languageSelect.value = i18n.locale(state.locale);
+          refreshStatus.hidden = false;
+          refreshStatusKey = 'localeSaveFailed';
+          refreshStatusArgs = null;
+          refreshStatus.textContent = i18n.t(i18n.locale(state.locale), refreshStatusKey);
+        } finally {
+          languageSelect.disabled = false;
+          localeInFlight = null;
+        }
+      })();
+      localeInFlight = work;
+      return work;
     }
 
     function onStorageChanged(_changes, area) {

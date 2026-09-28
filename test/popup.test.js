@@ -216,3 +216,21 @@ test('a button-started partial refresh begins background progress polling', asyn
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(callbacks.length, 1);
 });
+
+test('an open popup follows a language change from extension storage', async () => {
+  const doc = startupPage();
+  const select = doc.createElement('select');
+  select.id = 'locale';
+  for (const value of ['cs', 'sk', 'en']) select.appendChild(Object.assign(doc.createElement('option'), { value }));
+  doc.querySelector('main').appendChild(select);
+  let changed;
+  let state = { status: 'ready', locale: 'cs', count: 10, items: [] };
+  await start(doc, {
+    watch(fn) { changed = fn; },
+    async send(message) { return message.type === 'detect' ? { changed: false, state } : state; }
+  });
+  state = { ...state, locale: 'en' };
+  await changed();
+  assert.equal(doc.documentElement.lang, 'en');
+  assert.equal(select.value, 'en');
+});
