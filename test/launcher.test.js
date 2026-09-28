@@ -31,6 +31,8 @@ test('launcher is attached directly to the document root with a closed shadow tr
   const host = launcher.host();
   assert.equal(host.parentNode, dom.window.document.documentElement);
   assert.equal(host.shadowRoot, null);
+  assert.equal(host.style.top, '18px');
+  assert.equal(host.style.bottom, '');
   assert.equal(dom.window.document.body.textContent, 'ČSFD');
   launcher.stop();
 });

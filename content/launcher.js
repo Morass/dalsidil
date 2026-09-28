@@ -10,7 +10,7 @@
 
   const HOST_STYLE = [
     'all:initial!important', 'position:fixed!important', 'right:18px!important',
-    'bottom:18px!important', 'z-index:2147483647!important',
+    'top:18px!important', 'z-index:2147483647!important',
     'display:block!important', 'width:auto!important', 'height:auto!important',
     'margin:0!important', 'padding:0!important', 'border:0!important',
     'visibility:visible!important', 'opacity:1!important', 'pointer-events:auto!important'
@@ -22,7 +22,7 @@
     .wrap{position:relative;font:14px/1.4 system-ui,-apple-system,sans-serif;color:#eef1f3}
     button{display:block;margin-left:auto;border:0;border-radius:999px;padding:11px 16px;background:#d53b37;color:#fff;font:700 14px/1 system-ui,-apple-system,sans-serif;box-shadow:0 3px 14px #0007;cursor:pointer}
     button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:2px}
-    .panel{position:absolute;right:0;bottom:48px;width:min(360px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 90px));overflow:auto;border:1px solid #4b555d;border-radius:10px;background:#15191d;box-shadow:0 7px 28px #0009}
+    .panel{position:absolute;right:0;top:48px;width:min(360px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 90px));overflow:auto;border:1px solid #4b555d;border-radius:10px;background:#15191d;box-shadow:0 7px 28px #0009}
     .panel[hidden]{display:none}
     h2{position:sticky;top:0;z-index:1;margin:0;padding:14px 16px;border-bottom:3px solid #d53b37;background:#20262b;font:700 18px/1.2 system-ui,-apple-system,sans-serif}
     p{margin:0;padding:14px 16px;color:#c3ccd1}
