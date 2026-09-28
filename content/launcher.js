@@ -78,7 +78,7 @@
 
     function acceptState(next) {
       validateState(next);
-      const nextPaintedState = JSON.stringify([next.status, next.items]);
+      const nextPaintedState = JSON.stringify([next.status, next.locale, next.items]);
       state = next;
       available = true;
       if (nextPaintedState !== paintedState) {
@@ -88,9 +88,10 @@
     }
 
     function repaint() {
-      if (!button || !panel || !list || !note) return;
+      if (!currentHost || !button || !panel || !list || !note) return;
       const items = state.items || [];
       const locale = i18n.locale(state.locale);
+      currentHost.setAttribute('lang', locale);
       button.textContent = items.length ? `Další díl · ${items.length}` : 'Další díl';
       button.setAttribute('aria-label', items.length ? `Další díl, ${i18n.t(locale, 'items', { count: items.length })}` : 'Další díl');
       refreshButton.textContent = `↻ ${i18n.t(locale, 'refresh')}`;
@@ -212,9 +213,13 @@
           readGeneration += 1;
           acceptState(next);
           ensureAttached();
+          const nextLocale = i18n.locale(next.locale);
           refreshStatus.textContent = next.status === 'scanning'
-            ? i18n.t(i18n.locale(next.locale), 'background')
-            : i18n.t(i18n.locale(next.locale), 'done');
+            ? i18n.t(nextLocale, 'background')
+            : next.status === 'challenge' ? i18n.t(nextLocale, 'challenge')
+              : next.status === 'network' ? i18n.t(nextLocale, 'network')
+                : /^http-/.test(next.status || '') ? i18n.t(nextLocale, 'httpError', { code: next.status.slice(5) })
+                  : next.status === 'ready' ? i18n.t(nextLocale, 'done') : i18n.t(nextLocale, 'refreshFailed');
         } catch (_) {
           refreshStatus.textContent = i18n.t(locale, 'refreshFailed');
         } finally {

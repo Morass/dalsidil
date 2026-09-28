@@ -12,11 +12,11 @@
       let origin = null;
       try {
         const parsedBase = new URL(base || 'https://www.csfd.cz/');
-        if (parsedBase.protocol === 'https:' && HOSTS.has(parsedBase.hostname)) origin = parsedBase;
+        if (parsedBase.protocol === 'https:' && HOSTS.has(parsedBase.hostname) && !parsedBase.port && !parsedBase.username && !parsedBase.password) origin = parsedBase;
       } catch (_) { /* use the safe default */ }
       const effectiveBase = origin || new URL('https://www.csfd.cz/');
       const url = new URL(href, effectiveBase);
-      return url.protocol === 'https:' && url.hostname === effectiveBase.hostname ? url : null;
+      return url.protocol === 'https:' && url.origin === effectiveBase.origin && !url.username && !url.password && !url.port ? url : null;
     } catch (_) { return null; }
   }
 
@@ -31,6 +31,16 @@
       href: `${match[1]}film/${match[2]}-${match[3]}/${match[4]}-${match[5]}/prehled/`,
       host: url.origin
     };
+  }
+
+  function allowedFetchUrl(href, kind) {
+    let url;
+    try { url = new URL(href); } catch (_) { return null; }
+    if (url.protocol !== 'https:' || !HOSTS.has(url.hostname) || url.port || url.username || url.password) return null;
+    if (kind === 'profile') return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?$/.test(url.pathname) ? url : null;
+    if (kind === 'ratings') return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(?:uzivatel|user)\/\d+-[^/]+\/(?:hodnoceni|ratings)\/$/.test(url.pathname) ? url : null;
+    if (kind === 'episode') return episodeIds(url.href, url.href) ? url : null;
+    return null;
   }
 
   function blocked(doc) {
@@ -102,5 +112,5 @@
     return { seriesTitle, currentCode, next, blocked: false };
   }
 
-  return { safeUrl, episodeIds, parseRatingsPage, parseEpisodePage };
+  return { safeUrl, episodeIds, allowedFetchUrl, parseRatingsPage, parseEpisodePage };
 });

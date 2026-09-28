@@ -22,6 +22,7 @@
 
     function ratingsUrl(profile, page) {
       const base = new URL(profile.href);
+      if (base.protocol !== 'https:' || base.port || base.username || base.password || !['www.csfd.cz', 'www.csfd.sk'].includes(base.hostname) || !/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(?:uzivatel|user)\/\d+-[^/]+\/$/.test(base.pathname)) throw new Error('invalid profile URL');
       const suffix = /^\/en\/user\//.test(base.pathname) ? 'ratings/' : 'hodnoceni/';
       base.pathname = base.pathname.replace(/\/$/, '') + '/' + suffix;
       base.search = page > 1 ? `?page=${page}` : '';
@@ -75,7 +76,10 @@
         const staleFinished = entry && !entry.next && now() - Number(entry.checkedAt || 0) >= finishedMaxAge;
         const oldParser = entry && entry.version !== RESOLVER_VERSION;
         if (!entry || entry.signature !== signature || staleFinished || oldParser) {
-          const url = new URL(series.progress.href, series.progress.host || opt.origin || 'https://www.csfd.cz/').href;
+          const base = series.progress.host || opt.origin || 'https://www.csfd.cz/';
+          const safe = parse.safeUrl(series.progress.href, base);
+          if (!safe || !parse.episodeIds(safe.href, safe.href)) return { items, cache: resolved, asked, stopped: 'invalid-url', complete: false };
+          const url = safe.href;
           const loaded = loadEpisode ? await loadEpisode(url, series.seriesId) : await getDocument(url);
           asked += 1;
           if (loaded.error) {

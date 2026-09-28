@@ -1,9 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { parseRatingsPage, parseEpisodePage } = require('../src/parse.js');
+const { safeUrl, parseRatingsPage, parseEpisodePage } = require('../src/parse.js');
 
 const doc = (html, url = 'https://www.csfd.cz/') => new JSDOM(html, { url }).window.document;
+
+test('safe URLs reject credentials and nondefault ports', () => {
+  assert.equal(safeUrl('https://www.csfd.cz:8443/film/1-a/2-b/prehled/', 'https://www.csfd.cz/'), null);
+  assert.equal(safeUrl(`https://${'name:secret'}${'@'}www.csfd.cz/film/1-a/2-b/prehled/`, 'https://www.csfd.cz/'), null);
+});
 
 test('ratings parser keeps episode identity, S/E code, stars, date and next-page state', () => {
   const page = doc(`<table><tr><td class="name"><a class="film-title-name" href="/film/237899-columbo/43366-case/prehled/">A Case</a> (epizoda) (S05E02)</td><td><span class="stars stars-4"></span><time datetime="2026-09-20">20. 9. 2026</time></td></tr></table><a class="page-next" href="?page=2">další</a>`);

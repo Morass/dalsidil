@@ -9,8 +9,16 @@
   const statusKeys = { challenge: 'challenge', network: 'network', 'parser-unavailable': 'parserUnavailable', detecting: 'detecting', resolving: 'resolving', setup: 'setup', idle: 'idle', error: 'error' };
   const language = (state) => i18n.locale(state && state.locale);
 
+  function nextUrl(item) {
+    try {
+      const url = new URL(item.next.href, item.next.host || item.host || 'https://www.csfd.cz/');
+      return url.protocol === 'https:' && !url.username && !url.password && !url.port && ['www.csfd.cz', 'www.csfd.sk'].includes(url.hostname) ? url.href : null;
+    } catch (_) { return null; }
+  }
+
   function statusMessage(state) {
     const locale = language(state);
+    if (state.messageKey) return i18n.t(locale, state.messageKey, state.messageArgs);
     if (state.message && !/^Refresh stopped:/.test(state.message)) return state.message;
     if (/^http-\d+$/.test(state.status || '')) return i18n.t(locale, 'httpError', { code: state.status.slice(5) });
     if (statusKeys[state.status]) return i18n.t(locale, statusKeys[state.status]);
@@ -54,13 +62,15 @@
     doc.querySelector('main').setAttribute('aria-busy', String(busy));
     list.hidden = state.status === 'challenge' && !items.length;
     for (const item of items) {
+      const href = item && item.next && nextUrl(item);
+      if (!href) continue;
       const row = doc.createElement('li');
       const title = doc.createElement('strong');
       title.textContent = item.seriesTitle;
       const detail = doc.createElement('small');
       detail.textContent = `${i18n.t(locale, 'lastRated')}: ${item.after || i18n.t(locale, 'latestRating')}`;
       const link = doc.createElement('a');
-      link.href = new URL(item.next.href, item.next.host || item.host || 'https://www.csfd.cz/').href;
+      link.href = href;
       link.target = '_blank';
       link.rel = 'noreferrer';
       link.textContent = item.next.code ? `${item.next.code}${item.next.title ? ` · ${item.next.title}` : ''}` : (item.next.title || i18n.t(locale, 'openNext'));

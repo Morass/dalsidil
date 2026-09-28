@@ -16,6 +16,13 @@ test('a late vote on an older episode changes activity but never rewinds progres
   assert.equal(series[0].progress.episodeId, 105);
 });
 
+test('an older numeric episode id cannot rewind progress when codes are absent', () => {
+  const existing = mergeRatings({}, [episode(1, 20, null, 1)]);
+  const next = mergeRatings(existing, [episode(1, 2, null, 2)]);
+  assert.equal(next['1'].progress.episodeId, 20);
+  assert.equal(next['1'].activity, 2);
+});
+
 test('series are ranked by newest activity, not furthest episode number', () => {
   const rows = [episode(1, 99, 'S09E09', 2), episode(2, 11, 'S01E01', 8)];
   assert.deepEqual(rankedSeries(mergeRatings({}, rows)).map((x) => x.seriesId), [2, 1]);

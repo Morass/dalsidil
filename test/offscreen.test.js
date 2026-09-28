@@ -43,3 +43,12 @@ test('real offscreen parser detects the authenticated header profile', async () 
   assert.equal(result.parsed.state, 'in');
   assert.equal(result.parsed.profile.id, 7);
 });
+
+test('offscreen parser refuses foreign and wrong-kind URLs before fetch', async () => {
+  for (const [kind, url] of [['ratings', 'https://example.org/collect'], ['ratings', 'https://www.csfd.cz/film/1-show/2-episode/prehled/']]) {
+    const app = parserHarness('private');
+    const result = await app.send({ target: 'offscreen', kind, url });
+    assert.equal(result.error, 'invalid-url');
+    assert.equal(app.request, undefined);
+  }
+});

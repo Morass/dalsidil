@@ -27,7 +27,7 @@ function workerHarness(routes) {
     },
     chrome: {
       storage: { local: {
-        async get(key) { return { [key]: data[key] }; },
+        async get(key) { return { [key]: data[key] === undefined ? undefined : structuredClone(data[key]) }; },
         async set(values) { Object.assign(data, structuredClone(values)); },
         async remove(key) { delete data[key]; }
       } },
@@ -94,6 +94,16 @@ test('language defaults to Czech and persists without starting a scan', async ()
   assert.equal(rejected.locale, 'cs');
 });
 
+test('overlapping language and count changes preserve both settings', async () => {
+  const app = workerHarness({});
+  await Promise.all([
+    app.send({ type: 'count', count: 3 }),
+    app.send({ type: 'locale', locale: 'en' })
+  ]);
+  assert.equal(app.data.settings.count, 3);
+  assert.equal(app.data.settings.locale, 'en');
+});
+
 test('opening the extension discovers the current signed-in account and scans it', async () => {
   const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
   const ratings = `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>`;
@@ -123,7 +133,7 @@ test('failed login detection names that cached account identity was not confirme
   app.data.settings = { count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
   const detected = await app.send({ type: 'detect' });
   assert.equal(detected.changed, false);
-  assert.match(detected.state.message, /could not confirm.*login/i);
+  assert.equal(detected.state.messageKey, 'loginUnconfirmed');
 });
 
 test('an unexpected worker error preserves cached rows in its visible error state', async () => {
@@ -154,6 +164,27 @@ test('definite logout clears the previously selected account', async () => {
   assert.equal(app.data.settings.profile, undefined);
   assert.equal(app.data.settings.count, 12);
   assert.equal(app.data.settings.locale, 'sk');
+  assert.equal(app.data['account:7'], undefined);
+});
+
+test('logout cannot be undone by an in-flight scan checkpoint', async () => {
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const signedOut = '<header class="page-header user-not-logged"></header>';
+  const app = workerHarness({
+    'https://www.csfd.cz/': signedOut,
+    'https://www.csfd.sk/': signedOut,
+    '/uzivatel/7-me/hodnoceni/': async () => { await waiting; return '<table></table>'; }
+  });
+  app.data.settings = { count: 10, profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = {};
+  const refreshing = app.send({ type: 'refresh', full: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  const logout = app.send({ type: 'detect' });
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  await Promise.all([refreshing, logout]);
+  assert.equal(app.data.settings.profile, undefined);
   assert.equal(app.data['account:7'], undefined);
 });
 

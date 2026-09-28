@@ -31,3 +31,8 @@ test('profile addresses are normalized and foreign hosts are rejected', () => {
   assert.deepEqual(parseProfile('https://www.csfd.sk/en/user/8-reader'), { id: 8, href: 'https://www.csfd.sk/en/user/8-reader/' });
   assert.equal(parseProfile('https://example.com/uzivatel/8-reader/'), null);
 });
+
+test('profile addresses accept the Czech sk locale but reject nondefault ports', () => {
+  assert.equal(parseProfile('https://www.csfd.sk/cs/uzivatel/123-name/').href, 'https://www.csfd.sk/cs/uzivatel/123-name/');
+  assert.equal(parseProfile('https://www.csfd.cz:8443/uzivatel/123-name/'), null);
+});

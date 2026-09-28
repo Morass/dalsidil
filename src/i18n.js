@@ -23,6 +23,10 @@
       items: '{count} položek', launcherSetup: 'Nastavení a první načtení najdete v ikoně rozšíření.',
       launcherEmpty: 'V uloženém výběru zatím nic není. Obnovit ho můžete v ikoně rozšíření.',
       refreshing: 'Obnovuji hodnocení…', background: 'Aktualizace pokračuje na pozadí.', done: 'Hotovo.', refreshFailed: 'Obnovení se nepodařilo. Zkuste to znovu.'
+      , loginUnconfirmed: 'Aktuální přihlášení na ČSFD se nepodařilo ověřit. Zobrazuji dříve vybraný účet.'
+      , identifyFailed: 'Přihlášený účet na ČSFD se nepodařilo zjistit. Otevřete ČSFD a zkuste to znovu nebo přidejte adresu profilu v Nastavení.'
+      , signedOut: 'Přihlaste se na ČSFD a znovu otevřete rozšíření. Adresu profilu můžete přidat také v Nastavení.'
+      , invalidProfile: 'Toto není platná adresa profilu na ČSFD.'
     },
     sk: {
       subtitle: 'Ďalšie epizódy podľa hodnotení na ČSFD', refresh: 'Obnoviť', settings: 'Nastavenia',
@@ -39,6 +43,10 @@
       items: '{count} položiek', launcherSetup: 'Nastavenia a prvé načítanie nájdete v ikone rozšírenia.',
       launcherEmpty: 'V uloženom výbere zatiaľ nič nie je. Obnoviť ho môžete v ikone rozšírenia.',
       refreshing: 'Obnovujem hodnotenia…', background: 'Aktualizácia pokračuje na pozadí.', done: 'Hotovo.', refreshFailed: 'Obnovenie sa nepodarilo. Skúste to znova.'
+      , loginUnconfirmed: 'Aktuálne prihlásenie na ČSFD sa nepodarilo overiť. Zobrazujem skôr vybraný účet.'
+      , identifyFailed: 'Prihlásený účet na ČSFD sa nepodarilo zistiť. Otvorte ČSFD a skúste to znova alebo pridajte adresu profilu v Nastaveniach.'
+      , signedOut: 'Prihláste sa na ČSFD a znova otvorte rozšírenie. Adresu profilu môžete pridať aj v Nastaveniach.'
+      , invalidProfile: 'Toto nie je platná adresa profilu na ČSFD.'
     },
     en: {
       subtitle: 'Your next episodes from ČSFD ratings', refresh: 'Refresh', settings: 'Settings',
@@ -55,6 +63,10 @@
       items: '{count} items', launcherSetup: 'Settings and the first scan are available from the extension icon.',
       launcherEmpty: 'Nothing is in the saved list yet. Refresh it from the extension icon.',
       refreshing: 'Refreshing ratings…', background: 'The refresh continues in the background.', done: 'Done.', refreshFailed: 'Refresh failed. Try again.'
+      , loginUnconfirmed: 'Could not confirm the current ČSFD login. Showing the previously selected account.'
+      , identifyFailed: 'Could not identify the signed-in ČSFD account. Open ČSFD, then try again or add the profile URL in Settings.'
+      , signedOut: 'Sign in to ČSFD, then reopen this extension. You can also add the profile URL in Settings.'
+      , invalidProfile: 'That is not a ČSFD profile URL.'
     }
   };
 

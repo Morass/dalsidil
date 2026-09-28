@@ -43,6 +43,14 @@ test('a next episode parsed from sk links back to sk', () => {
   assert.equal(doc.querySelector('a').origin, 'https://www.csfd.sk');
 });
 
+test('foreign and unsafe cached links are never rendered', () => {
+  for (const href of ['https://example.org/collect', 'javascript:alert(1)']) {
+    const doc = page();
+    render(doc, { status: 'ready', items: [{ seriesTitle: 'Unsafe', next: { href } }] });
+    assert.equal(doc.querySelector('a'), null);
+  }
+});
+
 test('an incomplete first scan is named as partial rather than complete', () => {
   const doc = page();
   render(doc, { status: 'scanning', partial: true, page: 6, items: [] });
@@ -70,6 +78,14 @@ test('a specific account or input warning is not hidden by a generic status', ()
   assert.match(doc.querySelector('#status').textContent, /could not confirm/i);
   render(doc, { status: 'error', items: [], message: 'That is not a ČSFD profile URL.' });
   assert.match(doc.querySelector('#status').textContent, /not a ČSFD profile/i);
+});
+
+test('worker message keys are localized', () => {
+  const doc = page();
+  render(doc, { status: 'error', locale: 'sk', messageKey: 'invalidProfile', items: [] });
+  assert.match(doc.querySelector('#status').textContent, /platná adresa profilu/i);
+  render(doc, { status: 'ready', locale: 'cs', messageKey: 'loginUnconfirmed', items: [] });
+  assert.match(doc.querySelector('#status').textContent, /nepodařilo ověřit/i);
 });
 
 function startupPage() {

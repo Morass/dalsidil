@@ -4,6 +4,8 @@ importScripts('model.js', 'parse.js', 'state.js', 'scan.js', 'profile.js');
 const LEASE_MS = 3 * 60 * 1000;
 const DEFAULT_COUNT = 10;
 let refreshChain = Promise.resolve();
+let settingsChain = Promise.resolve();
+let accountGeneration = 0;
 let creatingOffscreen = null;
 
 async function ensureOffscreen() {
@@ -49,6 +51,17 @@ const store = {
   async remove(key) { await chrome.storage.local.remove(key); }
 };
 
+function updateSettings(change) {
+  const work = settingsChain.then(async () => {
+    const current = await store.get('settings') || {};
+    const next = change(Object.assign({}, current));
+    await store.set('settings', next);
+    return next;
+  });
+  settingsChain = work.catch(() => {});
+  return work;
+}
+
 async function publicState() {
   const settings = await store.get('settings') || { count: DEFAULT_COUNT };
   const locale = ['cs', 'sk', 'en'].includes(settings.locale) ? settings.locale : 'cs';
@@ -65,6 +78,7 @@ async function publicState() {
     needsUpgrade,
     partial: !!(account.scan && !account.scan.complete),
     page: account.scan && account.scan.nextPage,
+    messageKey: account.messageKey || '',
     message: account.message || ''
   };
 }
@@ -85,7 +99,8 @@ async function detectSignedInProfile() {
       if (found.profile) {
         const current = await store.get('settings') || {};
         const changed = !current.profile || current.profile.id !== found.profile.id || current.profile.href !== found.profile.href;
-        await store.set('settings', Object.assign({}, current, { profile: found.profile, count: current.count || DEFAULT_COUNT }));
+        if (changed) accountGeneration += 1;
+        await updateSettings((latest) => Object.assign(latest, { profile: found.profile, count: latest.count || DEFAULT_COUNT }));
         const state = await publicState();
         return { state, changed: changed || state.needsUpgrade };
       }
@@ -93,19 +108,21 @@ async function detectSignedInProfile() {
   }
   if (!uncertain && signedOut === origins.length) {
     const current = await store.get('settings') || {};
-    if (current.profile) await store.remove(DalsiDilState.accountKey(current.profile.id));
-    await store.set('settings', { count: current.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(current.locale) ? current.locale : 'cs' });
+    if (current.profile) {
+      accountGeneration += 1;
+      await store.remove(DalsiDilState.accountKey(current.profile.id));
+    }
+    await updateSettings((latest) => ({ count: latest.count || DEFAULT_COUNT, locale: ['cs', 'sk', 'en'].includes(latest.locale) ? latest.locale : 'cs' }));
     return { state: await publicState(), changed: !!current.profile };
   }
   const state = await publicState();
-  if (state.profile) return { state: Object.assign({}, state, { message: 'Could not confirm the current ČSFD login. Showing the previously selected account.' }), changed: false };
-  state.message = uncertain
-    ? 'Could not identify the signed-in ČSFD account. Open ČSFD, then try again or add the profile URL in Settings.'
-    : 'Sign in to ČSFD, then reopen this extension. You can also add the profile URL in Settings.';
+  if (state.profile) return { state: Object.assign({}, state, { message: '', messageKey: 'loginUnconfirmed' }), changed: false };
+  state.messageKey = uncertain ? 'identifyFailed' : 'signedOut';
   return { state, changed: false };
 }
 
 async function refreshNow(full) {
+  const generation = accountGeneration;
   const settings = await store.get('settings') || {};
   if (!settings.profile) return publicState();
   const key = DalsiDilState.accountKey(settings.profile.id);
@@ -120,6 +137,7 @@ async function refreshNow(full) {
   account.lease = lease;
   account.status = 'scanning';
   await store.set(key, account);
+  if (generation !== accountGeneration) { await store.remove(key); return publicState(); }
   await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
 
   const continuing = !full && account.scan && !account.scan.complete;
@@ -128,13 +146,17 @@ async function refreshNow(full) {
     ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, knownStreak: account.scan.knownStreak, activityBase: account.scan.activityBase, incremental: !!account.scan.incremental }
     : { nextPage: 1, ratings: (full ? {} : account.ratings || {}), incremental };
   const scanned = await scanner.scanRatings(settings.profile, resume, async (part) => {
+    if (generation !== accountGeneration) throw new Error('account-changed');
     account = DalsiDilState.scanCheckpoint(account, part, Date.now());
     account.scan.incremental = incremental;
     account.scan.activityBase = part.activityBase;
     account.lease = { owner, until: Date.now() + LEASE_MS };
     await store.set(key, account);
+    if (generation !== accountGeneration) { await store.remove(key); throw new Error('account-changed'); }
     await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
   });
+
+  if (generation !== accountGeneration) { await store.remove(key); return publicState(); }
 
   if (scanned.stopped && scanned.stopped !== 'chunk') {
     if (account.scan && !account.scan.complete) {
@@ -162,13 +184,15 @@ async function refreshNow(full) {
   account.message = resolved.stopped && resolved.stopped !== 'challenge' ? `Refresh stopped: ${resolved.stopped}` : '';
   account.lease = null;
   await store.set(key, account);
+  if (generation !== accountGeneration) { await store.remove(key); return publicState(); }
   if (scanned.complete) await chrome.alarms.clear('continue-scan');
   else await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
   return publicState();
 }
 
 function refresh(full) {
-  const work = refreshChain.then(() => refreshNow(full)).catch(async () => {
+  const work = refreshChain.then(() => refreshNow(full)).catch(async (error) => {
+    if (error && error.message === 'account-changed') return publicState();
     const settings = await store.get('settings') || {};
     if (!settings.profile) return { status: 'error', count: settings.count || DEFAULT_COUNT, items: [], message: '' };
     const key = DalsiDilState.accountKey(settings.profile.id);
@@ -191,21 +215,18 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message.type === 'detect') return detectSignedInProfile();
     if (message.type === 'profile') {
       const profile = DalsiDilProfile.parseProfile(message.href);
-      if (!profile) return Object.assign(await publicState(), { status: 'error', message: 'That is not a ČSFD profile URL.' });
-      const settings = await store.get('settings') || {};
-      await store.set('settings', Object.assign({}, settings, { profile, count: settings.count || DEFAULT_COUNT }));
+      if (!profile) return Object.assign(await publicState(), { status: 'error', message: '', messageKey: 'invalidProfile' });
+      const previous = await store.get('settings') || {};
+      if (!previous.profile || previous.profile.id !== profile.id || previous.profile.href !== profile.href) accountGeneration += 1;
+      await updateSettings((settings) => Object.assign(settings, { profile, count: settings.count || DEFAULT_COUNT }));
       return refresh(false);
     }
     if (message.type === 'count') {
-      const settings = await store.get('settings') || {};
-      settings.count = Math.max(1, Math.min(25, Number(message.count) || DEFAULT_COUNT));
-      await store.set('settings', settings);
+      await updateSettings((settings) => Object.assign(settings, { count: Math.max(1, Math.min(25, Number(message.count) || DEFAULT_COUNT)) }));
       return refresh(false);
     }
     if (message.type === 'locale') {
-      const settings = await store.get('settings') || {};
-      settings.locale = ['cs', 'sk', 'en'].includes(message.locale) ? message.locale : 'cs';
-      await store.set('settings', settings);
+      await updateSettings((settings) => Object.assign(settings, { locale: ['cs', 'sk', 'en'].includes(message.locale) ? message.locale : 'cs' }));
       return publicState();
     }
     if (message.type === 'refresh') return refresh(!!message.full);

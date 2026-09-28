@@ -6,16 +6,16 @@
   'use strict';
 
   const HOSTS = new Set(['www.csfd.cz', 'www.csfd.sk']);
-  const PATH = /^\/(?:en\/)?(?:uzivatel|user)\/(\d+)-([^/?#]+)(?:\/|$)/;
+  const PATH = /^\/(?:(en|cs)\/)?(?:uzivatel|user)\/(\d+)-([^/?#]+)(?:\/|$)/;
 
   function parseProfile(href, base) {
     let url;
     try { url = new URL(href, base); } catch (_) { return null; }
-    if (url.protocol !== 'https:' || !HOSTS.has(url.hostname)) return null;
+    if (url.protocol !== 'https:' || !HOSTS.has(url.hostname) || url.port || url.username || url.password) return null;
     const match = PATH.exec(url.pathname);
     if (!match) return null;
-    const prefix = url.pathname.startsWith('/en/') ? '/en/user/' : '/uzivatel/';
-    return { id: Number(match[1]), href: `${url.origin}${prefix}${match[1]}-${match[2]}/` };
+    const prefix = match[1] === 'en' ? '/en/user/' : match[1] === 'cs' ? '/cs/uzivatel/' : '/uzivatel/';
+    return { id: Number(match[2]), href: `${url.origin}${prefix}${match[2]}-${match[3]}/` };
   }
 
   function loginFlag(doc) {

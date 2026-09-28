@@ -304,6 +304,30 @@ test('launcher follows the cached language setting', async () => {
   launcher.stop();
 });
 
+test('a storage-only language change repaints the launcher', async () => {
+  const dom = page();
+  const state = { status: 'ready', locale: 'cs', items: [{ seriesTitle: 'Show', after: 'S01E01', next: { href: '/film/3-show/4-next/prehled/' } }] };
+  const api = apiWith(state);
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  state.locale = 'en';
+  api.fireStorage({ settings: { newValue: { locale: 'en' } } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(launcher.snapshot().refreshLabel, '↻ Refresh');
+  assert.match(launcher.snapshot().rowDetails[0], /Last rated/);
+  launcher.stop();
+});
+
+test('refresh reports returned failure state instead of claiming success', async () => {
+  const dom = page();
+  const api = apiWith({ status: 'network', locale: 'en', items: [] });
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  await launcher.refresh();
+  assert.match(launcher.snapshot().refreshStatus, /could not be reached/i);
+  launcher.stop();
+});
+
 test('an unavailable extension runtime leaves no misleading page control', async () => {
   const dom = page();
   const launcher = createLauncher(dom.window.document, { runtime: { async sendMessage() { throw new Error('gone'); } } });
