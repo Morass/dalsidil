@@ -66,6 +66,52 @@ test('opening the page panel reads cached state only and never requests detectio
   launcher.stop();
 });
 
+test('page-panel refresh runs one incremental scan and paints its returned cache', async () => {
+  const dom = page();
+  const messages = [];
+  let finishRefresh;
+  const api = {
+    runtime: { sendMessage(message) {
+      messages.push(message);
+      if (message.type === 'state') return Promise.resolve({ status: 'ready', items: [] });
+      return new Promise((resolve) => { finishRefresh = resolve; });
+    } },
+    storage: { onChanged: { addListener() {}, removeListener() {} } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  const refreshing = launcher.refresh();
+  assert.deepEqual(messages, [{ type: 'state' }, { type: 'refresh', full: false }]);
+  assert.equal(launcher.snapshot().refreshDisabled, true);
+  assert.match(launcher.snapshot().refreshStatus, /obnovuji/i);
+  launcher.refresh();
+  assert.equal(messages.length, 2, 'a second click cannot start a concurrent scan');
+  finishRefresh({ status: 'ready', items: [{ seriesTitle: 'Fresh show', next: { href: '/film/3-show/4-next/prehled/' } }] });
+  await refreshing;
+  assert.equal(launcher.snapshot().rows[0].title, 'Fresh show');
+  assert.equal(launcher.snapshot().refreshDisabled, false);
+  assert.match(launcher.snapshot().refreshStatus, /hotovo/i);
+  launcher.stop();
+});
+
+test('failed page-panel refresh keeps cached rows and offers retry', async () => {
+  const dom = page();
+  const api = {
+    runtime: { async sendMessage(message) {
+      if (message.type === 'state') return { status: 'ready', items: [{ seriesTitle: 'Cached', next: { href: '/film/3-show/4-next/prehled/' } }] };
+      throw new Error('offline');
+    } },
+    storage: { onChanged: { addListener() {}, removeListener() {} } }
+  };
+  const launcher = createLauncher(dom.window.document, api);
+  await launcher.start();
+  await launcher.refresh();
+  assert.equal(launcher.snapshot().rows[0].title, 'Cached');
+  assert.equal(launcher.snapshot().refreshDisabled, false);
+  assert.match(launcher.snapshot().refreshStatus, /nepodařilo/i);
+  launcher.stop();
+});
+
 test('cached Slovak links retain their origin in the page panel', async () => {
   const dom = page('https://www.csfd.sk/film/1-show/prehled/');
   const api = apiWith({ status: 'ready', items: [{
@@ -231,7 +277,7 @@ test('foreign cached links make the launcher fail closed', async () => {
   assert.equal(launcher.host(), null);
 });
 
-test('opening a populated panel moves keyboard focus to its first episode link', async () => {
+test('opening a populated panel moves keyboard focus to its refresh action', async () => {
   const dom = page();
   const api = apiWith({ status: 'ready', items: [{
     seriesTitle: 'Show', next: { href: '/film/3-show/4-next/prehled/' }
@@ -239,7 +285,7 @@ test('opening a populated panel moves keyboard focus to its first episode link',
   const launcher = createLauncher(dom.window.document, api);
   await launcher.start();
   launcher.click();
-  assert.match(launcher.focusedLink(), /\/film\/3-show\/4-next/);
+  assert.equal(launcher.snapshot().focusedControl, 'refresh');
   launcher.stop();
 });
 

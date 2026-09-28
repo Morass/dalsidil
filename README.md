@@ -18,7 +18,7 @@ The first scan may continue in small batches if your ratings history is long. Yo
 
 The list is ordered by the most recent episode-rating activity. Each row shows the furthest normally numbered episode you rated and links to ČSFD's following episode. Finished series are left out. The default list has 10 series; open **Settings** to choose 1–25.
 
-On ČSFD pages, the **Další díl** button in the upper-right corner opens the same cached list without starting a scan. The toolbar popup remains available everywhere and is where you refresh or change settings.
+On ČSFD pages, the **Další díl** button in the upper-right corner opens the cached list. Choose **↻ Obnovit** there after rating an episode to run the same incremental refresh as the toolbar popup. The popup remains available everywhere and is where you change settings or start a full rescan.
 
 Use **↻** to check for new ratings. Settings also has **Full rescan**, which reconciles removed ratings and rebuilds progress from the complete history. If ČSFD asks for a browser check, open ČSFD normally, complete it, and refresh the extension again.
 

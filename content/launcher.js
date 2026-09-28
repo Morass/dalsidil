@@ -20,12 +20,17 @@
     :host{all:initial}
     *{box-sizing:border-box}
     .wrap{position:relative;font:14px/1.4 system-ui,-apple-system,sans-serif;color:#eef1f3}
-    button{display:block;margin-left:auto;border:0;border-radius:999px;padding:11px 16px;background:#d53b37;color:#fff;font:700 14px/1 system-ui,-apple-system,sans-serif;box-shadow:0 3px 14px #0007;cursor:pointer}
+    button{border:0;color:#fff;font:700 14px/1 system-ui,-apple-system,sans-serif;cursor:pointer}
+    button:disabled{opacity:.6;cursor:default}
+    .launcher{display:block;margin-left:auto;border-radius:999px;padding:11px 16px;background:#d53b37;box-shadow:0 3px 14px #0007}
+    .refresh{margin:12px 16px 0;border-radius:6px;padding:9px 12px;background:#354c5d}
     button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:2px}
     .panel{position:absolute;right:0;top:48px;width:min(360px,calc(100vw - 24px));max-height:min(480px,calc(100vh - 90px));overflow:auto;border:1px solid #4b555d;border-radius:10px;background:#15191d;box-shadow:0 7px 28px #0009}
     .panel[hidden]{display:none}
     h2{position:sticky;top:0;z-index:1;margin:0;padding:14px 16px;border-bottom:3px solid #d53b37;background:#20262b;font:700 18px/1.2 system-ui,-apple-system,sans-serif}
     p{margin:0;padding:14px 16px;color:#c3ccd1}
+    .refresh-status{padding:10px 16px 0;color:#c3ccd1}
+    .refresh-status[hidden]{display:none}
     ol{list-style:none;margin:0;padding:0 16px}
     li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;padding:12px 0;border-bottom:1px solid #343b41}
     strong{overflow-wrap:anywhere;font-weight:700}
@@ -40,6 +45,9 @@
     let panel = null;
     let list = null;
     let note = null;
+    let refreshButton = null;
+    let refreshStatus = null;
+    let refreshInFlight = null;
     let state = { status: 'setup', items: [] };
     let documentObserver = null;
     let rootObserver = null;
@@ -55,6 +63,26 @@
         throw new Error('invalid cached link');
       }
       return url.href;
+    }
+
+    function validateState(next) {
+      if (!next || !Array.isArray(next.items)) throw new Error('invalid cached state');
+      for (const item of next.items) {
+        if (!item || !item.next || typeof item.next.href !== 'string') throw new Error('invalid cached item');
+        linkFor(item);
+      }
+      return next;
+    }
+
+    function acceptState(next) {
+      validateState(next);
+      const nextPaintedState = JSON.stringify([next.status, next.items]);
+      state = next;
+      available = true;
+      if (nextPaintedState !== paintedState) {
+        paintedState = nextPaintedState;
+        repaint();
+      }
     }
 
     function repaint() {
@@ -102,20 +130,27 @@
       const heading = doc.createElement('h2');
       heading.textContent = 'Další díl';
       const nextNote = doc.createElement('p');
+      const nextRefreshStatus = doc.createElement('p');
+      nextRefreshStatus.className = 'refresh-status';
+      nextRefreshStatus.setAttribute('role', 'status');
+      nextRefreshStatus.hidden = true;
       const nextList = doc.createElement('ol');
       const nextButton = doc.createElement('button');
+      nextButton.className = 'launcher';
       nextButton.type = 'button';
       nextButton.setAttribute('aria-expanded', 'false');
       nextButton.addEventListener('click', () => {
         const open = nextPanel.hidden;
         nextPanel.hidden = !open;
         nextButton.setAttribute('aria-expanded', String(open));
-        if (open) {
-          const firstLink = nextList.querySelector('a');
-          if (firstLink) firstLink.focus();
-        }
+        if (open) nextRefreshButton.focus();
       });
-      nextPanel.append(heading, nextNote, nextList);
+      const nextRefreshButton = doc.createElement('button');
+      nextRefreshButton.className = 'refresh';
+      nextRefreshButton.type = 'button';
+      nextRefreshButton.textContent = '↻ Obnovit';
+      nextRefreshButton.addEventListener('click', () => { refresh(); });
+      nextPanel.append(heading, nextRefreshStatus, nextRefreshButton, nextNote, nextList);
       wrap.append(nextButton, nextPanel);
       root.append(style, wrap);
       currentHost = host;
@@ -124,6 +159,8 @@
       panel = nextPanel;
       list = nextList;
       note = nextNote;
+      refreshButton = nextRefreshButton;
+      refreshStatus = nextRefreshStatus;
       repaint();
       return host;
     }
@@ -149,24 +186,39 @@
       const generation = ++readGeneration;
       try {
         const next = await chromeApi.runtime.sendMessage({ type: 'state' });
-        if (!next || !Array.isArray(next.items)) throw new Error('invalid cached state');
-        for (const item of next.items) {
-          if (!item || !item.next || typeof item.next.href !== 'string') throw new Error('invalid cached item');
-          linkFor(item);
-        }
+        validateState(next);
         if (generation !== readGeneration) return false;
-        const nextPaintedState = JSON.stringify([next.status, next.items]);
-        state = next;
-        available = true;
-        if (nextPaintedState !== paintedState) {
-          paintedState = nextPaintedState;
-          repaint();
-        }
+        acceptState(next);
         return true;
       } catch (error) {
         if (generation !== readGeneration) return false;
         throw error;
       }
+    }
+
+    function refresh() {
+      if (refreshInFlight) return refreshInFlight;
+      refreshButton.disabled = true;
+      refreshStatus.hidden = false;
+      refreshStatus.textContent = 'Obnovuji hodnocení…';
+      const work = (async () => {
+        try {
+          const next = validateState(await chromeApi.runtime.sendMessage({ type: 'refresh', full: false }));
+          readGeneration += 1;
+          acceptState(next);
+          ensureAttached();
+          refreshStatus.textContent = next.status === 'scanning'
+            ? 'Aktualizace pokračuje na pozadí.'
+            : 'Hotovo.';
+        } catch (_) {
+          refreshStatus.textContent = 'Obnovení se nepodařilo. Zkuste to znovu.';
+        } finally {
+          refreshButton.disabled = false;
+          refreshInFlight = null;
+        }
+      })();
+      refreshInFlight = work;
+      return work;
     }
 
     function onStorageChanged(_changes, area) {
@@ -203,13 +255,16 @@
     }
 
     return {
-      start, stop,
+      start, stop, refresh,
       host: () => currentHost,
       click: () => { if (button) button.click(); },
       focusFirstLink: () => { const link = list && list.querySelector('a'); if (link) link.focus(); },
       focusedLink: () => shadow && shadow.activeElement && shadow.activeElement.tagName === 'A' ? shadow.activeElement.href : null,
       snapshot: () => ({
         open: !!(panel && !panel.hidden),
+        focusedControl: shadow && shadow.activeElement === refreshButton ? 'refresh' : null,
+        refreshDisabled: !!(refreshButton && refreshButton.disabled),
+        refreshStatus: refreshStatus ? refreshStatus.textContent : '',
         rows: list ? [...list.children].map((row) => ({
           title: row.querySelector('strong').textContent,
           href: row.querySelector('a').href
