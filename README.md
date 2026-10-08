@@ -2,6 +2,9 @@
 
 Další díl keeps the next episode of every series you rate on ČSFD one click away.
 
+Další díl is an independent, custom extension. It is not an official ČSFD extension and
+is not affiliated with or endorsed by ČSFD.
+
 ![Další díl open on ČSFD](screenshots/dalsidil-on-csfd.png)
 
 ## Install
