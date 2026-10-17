@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Další díl",
   "description": "Find the next episodes of series you rate on ČSFD.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "permissions": ["storage", "alarms", "offscreen"],
   "host_permissions": ["https://www.csfd.cz/*", "https://www.csfd.sk/*"],
   "icons": {
@@ -14,7 +14,7 @@
   "background": { "service_worker": "src/worker.js" },
   "content_scripts": [{
     "matches": ["https://www.csfd.cz/*", "https://www.csfd.sk/*"],
-    "js": ["src/i18n.js", "content/launcher.js"],
+    "js": ["src/i18n.js", "content/launcher.js", "content/rating-watch.js"],
     "run_at": "document_start"
   }],
   "action": {

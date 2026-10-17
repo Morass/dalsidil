@@ -83,11 +83,11 @@ async function publicState() {
   };
 }
 
-async function detectSignedInProfile() {
+async function detectSignedInProfile(originHint) {
   const selectionAtStart = accountGeneration;
   const initial = await store.get('settings') || {};
   const preferred = initial.profile ? new URL(initial.profile.href).origin : 'https://www.csfd.cz';
-  const origins = [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk'].filter((value, index, all) => all.indexOf(value) === index);
+  const origins = (originHint ? [originHint] : [preferred, 'https://www.csfd.cz', 'https://www.csfd.sk']).filter((value, index, all) => all.indexOf(value) === index);
   let uncertain = false;
   let signedOut = 0;
   for (const origin of origins) {
@@ -108,6 +108,9 @@ async function detectSignedInProfile() {
       }
     } catch (_) { uncertain = true; }
   }
+  if (originHint && !uncertain && signedOut === origins.length) {
+    return { state: Object.assign(await publicState(), { message: '', messageKey: 'loginUnconfirmed' }), changed: false };
+  }
   if (!uncertain && signedOut === origins.length) {
     const current = await store.get('settings') || {};
     if (current.profile) {
@@ -125,18 +128,30 @@ async function detectSignedInProfile() {
   return { state, changed: false };
 }
 
-async function refreshNow(full) {
+async function refreshNow(full, ratedEpisode) {
   const generation = accountGeneration;
   const settings = await store.get('settings') || {};
   if (!settings.profile) return publicState();
   const key = DalsiDilState.accountKey(settings.profile.id);
   let account = await store.get(key) || {};
+  const pending = Object.assign({}, account.pendingRatedEpisodes);
+  if (ratedEpisode) pending[ratedEpisode.seriesId] = ratedEpisode;
+  ratedEpisode = ratedEpisode || Object.values(pending)[0];
   const owner = crypto.randomUUID();
   const lease = DalsiDilState.acquireLease(account.lease, owner, Date.now(), LEASE_MS);
   if (!lease) {
+    if (ratedEpisode) {
+      account.pendingRatedEpisodes = pending;
+      await store.set(key, account);
+    }
     const wait = Math.max(1, Math.ceil((Number(account.lease && account.lease.until) - Date.now()) / 60000));
     await chrome.alarms.create('continue-scan', { delayInMinutes: wait });
     return publicState();
+  }
+  if (ratedEpisode) {
+    account.resolved = Object.assign({}, account.resolved);
+    for (const episode of Object.values(pending)) delete account.resolved[episode.seriesId];
+    delete account.pendingRatedEpisodes;
   }
   account.lease = lease;
   account.status = 'scanning';
@@ -144,11 +159,12 @@ async function refreshNow(full) {
   if (generation !== accountGeneration) { await store.remove(key); return publicState(); }
   await chrome.alarms.create('continue-scan', { delayInMinutes: 1 });
 
-  const continuing = !full && account.scan && !account.scan.complete;
+  full = full || !!(ratedEpisode && account.scan && !account.scan.complete && account.scan.incremental === false);
+  const continuing = !full && !ratedEpisode && account.scan && !account.scan.complete;
   const incremental = !full && !continuing && !!account.ratings;
   const resume = continuing
     ? { nextPage: account.scan.nextPage, ratings: account.scan.ratings, knownStreak: account.scan.knownStreak, activityBase: account.scan.activityBase, incremental: !!account.scan.incremental }
-    : { nextPage: 1, ratings: (full ? {} : account.ratings || {}), incremental };
+    : { nextPage: 1, ratings: (full ? {} : Object.assign({}, account.ratings || {}, ratedEpisode && account.scan && account.scan.incremental && account.scan.ratings || {})), incremental };
   const scanned = await scanner.scanRatings(settings.profile, resume, async (part) => {
     if (generation !== accountGeneration) throw new Error('account-changed');
     account = DalsiDilState.scanCheckpoint(account, part, Date.now());
@@ -194,8 +210,14 @@ async function refreshNow(full) {
   return publicState();
 }
 
-function refresh(full) {
-  const work = refreshChain.then(() => refreshNow(full)).catch(async (error) => {
+function refresh(full, ratedEpisode) {
+  const work = refreshChain.then(async () => {
+    if (ratedEpisode) {
+      const detected = await detectSignedInProfile(ratedEpisode.host);
+      if (!detected.state.profile || detected.state.messageKey) return detected.state;
+    }
+    return refreshNow(full, ratedEpisode);
+  }).catch(async (error) => {
     if (error && error.message === 'account-changed') return publicState();
     const settings = await store.get('settings') || {};
     if (!settings.profile) return { status: 'error', count: settings.count || DEFAULT_COUNT, items: [], message: '' };
@@ -217,6 +239,14 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
   (async () => {
     if (message.type === 'state') return publicState();
     if (message.type === 'detect') return detectSignedInProfile();
+    if (message.type === 'rating-changed') {
+      const source = DalsiDilParse.allowedFetchUrl(_sender.url, 'episode');
+      const target = source && DalsiDilParse.safeUrl(message.href, source.href);
+      const episode = target && DalsiDilParse.episodeIds(target.href, source.href);
+      const actual = source && DalsiDilParse.episodeIds(source.href, source.href);
+      if (!episode || episode.seriesId !== actual.seriesId || episode.episodeId !== actual.episodeId) return publicState();
+      return refresh(false, episode);
+    }
     if (message.type === 'profile') {
       const profile = DalsiDilProfile.parseProfile(message.href);
       if (!profile) return Object.assign(await publicState(), { status: 'error', message: '', messageKey: 'invalidProfile' });
@@ -253,6 +283,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       await chrome.alarms.create('continue-scan', { delayInMinutes: wait });
       return;
     }
-    if (account.status === 'scanning' || (account.scan && !account.scan.complete)) await refresh(false);
+    if (account.pendingRatedEpisodes || account.status === 'scanning' || (account.scan && !account.scan.complete)) await refresh(false);
   })();
 });

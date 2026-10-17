@@ -66,7 +66,7 @@ function workerHarness(routes) {
     for (const name of names) vm.runInContext(fs.readFileSync(path.join(root, 'src', name), 'utf8'), context, { filename: name });
   };
   vm.runInContext(fs.readFileSync(path.join(root, 'src/worker.js'), 'utf8'), context, { filename: 'worker.js' });
-  const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
+  const send = (message, sender = {}) => new Promise((resolve) => listener(message, sender, resolve));
   return { send, data, alarms, cleared, parsedRequests, fireAlarm(name) { alarmListener({ name }); }, get offscreenCreates() { return offscreenCreates; } };
 }
 
@@ -314,4 +314,119 @@ test('full rescan abandons a partial incremental accumulator and removes stale s
   const complete = await app.send({ type: 'refresh', full: true });
   assert.equal(complete.status, 'ready');
   assert.deepEqual(Object.keys(app.data['account:7'].ratings), []);
+});
+
+// A vote must restart at page one even during a partial scan, and invalidate
+// only its series. Reading saved ratings must not infer progress from the click.
+test('rating notification restarts discovery and rechecks only the voted series', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
+  const ratings = '<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>';
+  const episode = '<header><h2><a href="/film/9-show/prehled/">Show</a></h2><nav><a rel="next" href="/film/9-show/12-two/prehled/">next</a></nav></header>';
+  const app = workerHarness({ '/': home, '/uzivatel/7-me/hodnoceni/': ratings, '/film/9-show/11-one/prehled/': episode });
+  await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  app.data['account:7'].scan = { complete: false, nextPage: 8, ratings: app.data['account:7'].ratings };
+  app.data['account:7'].resolved[99] = { sentinel: true };
+  app.parsedRequests.length = 0;
+  const href = 'https://www.csfd.cz/film/9-show/12-two/prehled/';
+  const state = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.equal(state.status, 'ready');
+  assert.ok(app.parsedRequests.includes('https://www.csfd.cz/uzivatel/7-me/hodnoceni/'));
+  assert.ok(app.parsedRequests.includes('https://www.csfd.cz/film/9-show/11-one/prehled/'));
+  assert.equal(app.parsedRequests.some((url) => url.includes('page=8')), false);
+  assert.match(state.items[0].next.href, /12-two/, 'an unsaved vote cannot advance progress');
+  assert.equal(app.data['account:7'].resolved[99].sentinel, true);
+});
+
+test('rating notification rejects an untrusted or mismatched page before fetching', async () => {
+  const app = workerHarness({});
+  const href = 'https://www.csfd.cz/film/9-show/12-two/prehled/';
+  for (const url of ['https://example.com/', 'https://www.csfd.sk/film/9-show/12-two/prehled/', 'https://www.csfd.cz/film/8-other/13-episode/prehled/']) {
+    await app.send({ type: 'rating-changed', href }, { url });
+  }
+  assert.equal(app.parsedRequests.length, 0);
+});
+
+test('a saved episode vote advances the next link without a manual refresh', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
+  const row = (id, code) => `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/${id}-episode/prehled/">Episode</a> (${code})</td><td><span class="stars stars-4"></span></td></tr></table>`;
+  const page = (next) => `<header><h2><a href="/film/9-show/prehled/">Show</a></h2><nav><a rel="next" href="/film/9-show/${next}-episode/prehled/">next</a></nav></header>`;
+  const routes = { '/': home, '/uzivatel/7-me/hodnoceni/': row(11, 'S01E01'), '/film/9-show/11-episode/prehled/': page(12), '/film/9-show/12-episode/prehled/': page(13) };
+  const app = workerHarness(routes);
+  await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  routes['/uzivatel/7-me/hodnoceni/'] = row(12, 'S01E02');
+  const href = 'https://www.csfd.cz/film/9-show/12-episode/prehled/';
+  const state = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.match(state.items[0].next.href, /13-episode/);
+});
+
+test('a vote cannot downgrade an unfinished full rescan to an incremental scan', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
+  const old = { seriesId: 9, activity: 1, progress: { seriesId: 9, episodeId: 20, code: 'S01E10', href: '/film/9-show/20-ten/prehled/' }, signatures: { 20: '20:4:' } };
+  const row = (id, code) => `<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/${id}-episode/prehled/">Episode</a> (${code})</td><td><span class="stars stars-4"></span></td></tr></table>`;
+  const routes = { '/': home, '/film/9-show/12-episode/prehled/': '<header></header>' };
+  for (let page = 1; page <= 6; page++) routes[`/uzivatel/7-me/hodnoceni/${page > 1 ? `?page=${page}` : ''}`] = row(page === 6 ? 20 : 12, page === 6 ? 'S01E10' : 'S01E02') + (page < 6 ? '<a class="page-next">next</a>' : '');
+  routes['/film/9-show/20-episode/prehled/'] = '<header><nav><a rel="next" href="/film/9-show/21-next/prehled/">next</a></nav></header>';
+  const app = workerHarness(routes);
+  app.data.settings = { profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = { ratings: { 9: old }, scan: { complete: false, incremental: false, nextPage: 4, ratings: { 9: { ...old, progress: { ...old.progress, episodeId: 12, code: 'S01E02' } } } } };
+  const href = 'https://www.csfd.cz/film/9-show/12-episode/prehled/';
+  const partial = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.equal(partial.status, 'scanning', 'a vote must not finish a full scan after two known pages');
+  assert.equal(app.data['account:7'].scan.incremental, false);
+  const complete = await app.send({ type: 'refresh', full: false });
+  assert.equal(complete.status, 'ready');
+  assert.match(complete.items[0].next.href, /21-next/);
+});
+
+test('an expired vote-origin session preserves another origin cache', async () => {
+  const app = workerHarness({ 'https://www.csfd.sk/': '<header class="page-header user-not-logged"></header>' });
+  app.data.settings = { profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = { items: [{ seriesId: 9, next: { href: '/film/9-show/12-two/prehled/' } }] };
+  const href = 'https://www.csfd.sk/film/9-show/12-two/prehled/';
+  const state = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.equal(state.profile.id, 7);
+  assert.equal(state.items.length, 1);
+  assert.equal(app.data['account:7'].items.length, 1);
+  assert.equal(state.messageKey, 'loginUnconfirmed');
+  assert.equal(app.parsedRequests.length, 1);
+});
+
+test('a vote queued behind a persisted lease survives the later refresh', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/7-me/">Me</a></li></ul></header>';
+  const ratings = '<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/11-one/prehled/">One</a> (S01E01)</td><td><span class="stars stars-4"></span></td></tr></table>';
+  const episode = '<header><nav><a rel="next" href="/film/9-show/12-two/prehled/">next</a></nav></header>';
+  const app = workerHarness({ '/': home, '/uzivatel/7-me/hodnoceni/': ratings, '/film/9-show/11-one/prehled/': episode });
+  await app.send({ type: 'profile', href: 'https://www.csfd.cz/uzivatel/7-me/' });
+  app.data['account:7'].lease = { owner: 'interrupted-worker', until: Date.now() + 60000 };
+  const href = 'https://www.csfd.cz/film/9-show/12-two/prehled/';
+  await app.send({ type: 'rating-changed', href }, { url: href });
+  app.data['account:7'].lease.until = 0;
+  app.parsedRequests.length = 0;
+  await app.send({ type: 'refresh', full: false });
+  assert.ok(app.parsedRequests.includes('https://www.csfd.cz/film/9-show/11-one/prehled/'), 'the deferred vote must still invalidate its series');
+});
+
+test('a vote uses the confirmed account on its own origin', async () => {
+  const home = '<header class="page-header user-logged"><ul class="header-bar"><li><a class="profile" href="/uzivatel/8-current/">Me</a></li></ul></header>';
+  const ratings = '<table><tr><td class="name"><a class="film-title-name" href="/film/9-show/12-two/prehled/">Two</a> (S01E02)</td><td><span class="stars stars-4"></span></td></tr></table>';
+  const episode = '<header><nav><a rel="next" href="/film/9-show/13-next/prehled/">next</a></nav></header>';
+  const app = workerHarness({ 'https://www.csfd.sk/': home, 'https://www.csfd.sk/uzivatel/8-current/hodnoceni/': ratings, 'https://www.csfd.sk/film/9-show/12-two/prehled/': episode });
+  app.data.settings = { profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-old/' } };
+  const href = 'https://www.csfd.sk/film/9-show/12-two/prehled/';
+  const state = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.equal(state.profile.id, 8);
+  assert.match(state.items[0].next.href, /13-next/);
+  assert.ok(app.parsedRequests.every((url) => url.startsWith('https://www.csfd.sk/')));
+});
+
+test('an uncertain vote-origin identity leaves cached progress unchanged', async () => {
+  const app = workerHarness({ '/': '<main id="anubis_challenge"></main>' });
+  app.data.settings = { profile: { id: 7, href: 'https://www.csfd.cz/uzivatel/7-me/' } };
+  app.data['account:7'] = { items: [{ seriesId: 9, next: { href: '/film/9-show/12-two/prehled/' } }] };
+  const href = 'https://www.csfd.cz/film/9-show/12-two/prehled/';
+  const state = await app.send({ type: 'rating-changed', href }, { url: href });
+  assert.equal(state.profile.id, 7);
+  assert.equal(state.items.length, 1);
+  assert.equal(state.messageKey, 'loginUnconfirmed');
+  assert.equal(app.parsedRequests.length, 1);
 });

@@ -25,7 +25,7 @@ Each row shows the last normally numbered episode you rated and links directly t
 
 ## Use it on ČSFD
 
-On ČSFD pages, select **Další díl** in the upper-right corner to open your saved list. After rating an episode, choose **↻ Obnovit** in the panel to pick up the new vote. The toolbar popup remains available on every page.
+On ČSFD pages, select **Další díl** in the upper-right corner to open your saved list. After you rate an episode on its ČSFD page, the saved list refreshes automatically. **↻ Obnovit** remains available for a manual refresh. The toolbar popup remains available on every page.
 
 Open **Nastavení** to:
 
